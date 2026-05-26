@@ -10,8 +10,6 @@ export interface LibraryEntry {
   mode: Mode;
   encrypted: boolean;
   size: number;
-  /** Last known window.scrollY for this document. */
-  scrollY?: number;
   /**
    * Media IDs referenced by this doc. Used as the "keep set" for media GC:
    * a media row in IDB is safe to drop only when no library entry references
@@ -39,54 +37,11 @@ export async function record(
   const now = Date.now();
   const full: LibraryEntry = {
     ...entry,
-    // Carry over the previous scroll position if the caller didn't supply one.
-    scrollY: entry.scrollY ?? existing?.scrollY,
     addedAt: existing?.addedAt ?? now,
     updatedAt: now,
   };
   await awaitReq(store.put(full));
   if (kind === 'history') await trimToLimit(kind, HISTORY_LIMIT);
-}
-
-/**
- * Write the latest scroll position into every store that contains this hash.
- * Does NOT touch `updatedAt`, so lists keep their existing order.
- */
-export async function updatePosition(hash: string, scrollY: number): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(LIBRARY_STORES, 'readwrite');
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    for (const kind of LIBRARY_STORES) {
-      const store = t.objectStore(kind);
-      const getReq = store.get(hash);
-      getReq.onsuccess = () => {
-        const e = getReq.result as LibraryEntry | undefined;
-        if (!e) return;
-        e.scrollY = scrollY;
-        store.put(e);
-      };
-    }
-  });
-}
-
-/** Look up the last known scroll position for a hash, checking all stores. */
-export async function getPosition(hash: string): Promise<number | undefined> {
-  const db = await openDb();
-  return new Promise((resolve) => {
-    const t = db.transaction(LIBRARY_STORES, 'readonly');
-    let found: number | undefined;
-    for (const kind of LIBRARY_STORES) {
-      const req = t.objectStore(kind).get(hash);
-      req.onsuccess = () => {
-        const e = req.result as LibraryEntry | undefined;
-        if (e?.scrollY !== undefined && found === undefined) found = e.scrollY;
-      };
-    }
-    t.oncomplete = () => resolve(found);
-    t.onerror = () => resolve(undefined);
-  });
 }
 
 export async function list(kind: LibraryKind): Promise<LibraryEntry[]> {

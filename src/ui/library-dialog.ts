@@ -148,7 +148,6 @@ function renderRow(
         mode: entry.mode,
         encrypted: entry.encrypted,
         size: entry.size,
-        scrollY: entry.scrollY,
         // Preserve the manifest so the media GC sweeper sees it covered.
         mediaIds: entry.mediaIds,
       });

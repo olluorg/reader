@@ -50,10 +50,9 @@ import {
   record as recordEntry,
   collectReferencedMediaIds,
   deriveTitle,
-  getPosition,
-  updatePosition,
   type LibraryKind,
 } from './storage/library';
+import { getPosition, setPosition } from './storage/positions';
 import {
   getMedia,
   hasMedia,
@@ -1174,7 +1173,7 @@ function attachScrollSaver() {
       scrollSaveTimer = null;
       const hash = location.hash.slice(1);
       if (!hash) return;
-      updatePosition(hash, Math.round(window.scrollY)).catch(() => {});
+      setPosition(hash, Math.round(window.scrollY)).catch(() => {});
     }, 500);
   };
   window.removeEventListener('scroll', (window as any).__readerScrollSave);
@@ -1290,9 +1289,9 @@ function renderToolbar(): HTMLElement {
           mode: gen.mode,
           encrypted: gen.encrypted,
           size: gen.size,
-          scrollY: Math.round(window.scrollY),
           mediaIds: collectDocMediaIds(gen.doc),
         }).catch((err) => console.warn('mine save failed:', err));
+        setPosition(gen.hash, Math.round(window.scrollY)).catch(() => {});
         // Shared markdown becomes the new baseline so the *next* version's
         // diff captures only the edits between this share and the next.
         state.baselineMarkdown = gen.doc.markdown;
