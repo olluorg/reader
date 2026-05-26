@@ -8,6 +8,8 @@
  * travels as its own share URL — so reads avoid binary↔text conversion.
  */
 
+import { MEDIA_STORE, awaitReq, openDb } from './db';
+
 export interface MediaEntry {
   id: string;
   mime: string;
@@ -23,71 +25,42 @@ export interface MediaEntry {
   addedAt: number;
 }
 
-const DB_NAME = 'reader-media';
-const DB_VERSION = 1;
-const STORE = 'media';
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('Failed to open media IDB'));
-  });
-  return dbPromise;
-}
-
-function awaitTx<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
 export async function putMedia(entry: Omit<MediaEntry, 'addedAt'>): Promise<void> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readwrite').objectStore(STORE);
-  const existing = (await awaitTx(store.get(entry.id))) as MediaEntry | undefined;
+  const store = db.transaction(MEDIA_STORE, 'readwrite').objectStore(MEDIA_STORE);
+  const existing = (await awaitReq(store.get(entry.id))) as MediaEntry | undefined;
   const now = Date.now();
   const full: MediaEntry = {
     ...entry,
     addedAt: existing?.addedAt ?? now,
   };
-  await awaitTx(store.put(full));
+  await awaitReq(store.put(full));
 }
 
 export async function getMedia(id: string): Promise<MediaEntry | undefined> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readonly').objectStore(STORE);
-  return (await awaitTx(store.get(id))) as MediaEntry | undefined;
+  const store = db.transaction(MEDIA_STORE, 'readonly').objectStore(MEDIA_STORE);
+  return (await awaitReq(store.get(id))) as MediaEntry | undefined;
 }
 
 export async function hasMedia(id: string): Promise<boolean> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readonly').objectStore(STORE);
-  const k = await awaitTx(store.getKey(id));
+  const store = db.transaction(MEDIA_STORE, 'readonly').objectStore(MEDIA_STORE);
+  const k = await awaitReq(store.getKey(id));
   return k !== undefined;
 }
 
 export async function listMedia(): Promise<MediaEntry[]> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readonly').objectStore(STORE);
-  const all = (await awaitTx(store.getAll())) as MediaEntry[];
+  const store = db.transaction(MEDIA_STORE, 'readonly').objectStore(MEDIA_STORE);
+  const all = (await awaitReq(store.getAll())) as MediaEntry[];
   return all.sort((a, b) => b.addedAt - a.addedAt);
 }
 
 export async function listMediaIds(): Promise<string[]> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readonly').objectStore(STORE);
-  const keys = (await awaitTx(store.getAllKeys())) as IDBValidKey[];
+  const store = db.transaction(MEDIA_STORE, 'readonly').objectStore(MEDIA_STORE);
+  const keys = (await awaitReq(store.getAllKeys())) as IDBValidKey[];
   return keys.map(String);
 }
 
@@ -99,8 +72,8 @@ export async function listMediaIds(): Promise<string[]> {
  */
 export async function sweepOrphanedMedia(keepIds: Set<string>): Promise<number> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readwrite').objectStore(STORE);
-  const keys = (await awaitTx(store.getAllKeys())) as IDBValidKey[];
+  const store = db.transaction(MEDIA_STORE, 'readwrite').objectStore(MEDIA_STORE);
+  const keys = (await awaitReq(store.getAllKeys())) as IDBValidKey[];
   let removed = 0;
   for (const k of keys) {
     if (!keepIds.has(String(k))) {
@@ -113,8 +86,8 @@ export async function sweepOrphanedMedia(keepIds: Set<string>): Promise<number> 
 
 export async function removeMedia(id: string): Promise<void> {
   const db = await openDb();
-  const store = db.transaction(STORE, 'readwrite').objectStore(STORE);
-  await awaitTx(store.delete(id));
+  const store = db.transaction(MEDIA_STORE, 'readwrite').objectStore(MEDIA_STORE);
+  await awaitReq(store.delete(id));
 }
 
 /**

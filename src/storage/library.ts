@@ -1,4 +1,5 @@
 import type { Mode } from '../types';
+import { LIBRARY_STORES, awaitReq, openDb } from './db';
 
 export type LibraryKind = 'history' | 'saved' | 'mine';
 
@@ -22,42 +23,10 @@ export interface LibraryEntry {
   updatedAt: number;
 }
 
-const DB_NAME = 'reader-library';
-const DB_VERSION = 1;
-const STORES: LibraryKind[] = ['history', 'saved', 'mine'];
-
 const HISTORY_LIMIT = 200;
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      for (const kind of STORES) {
-        if (!db.objectStoreNames.contains(kind)) {
-          const store = db.createObjectStore(kind, { keyPath: 'hash' });
-          store.createIndex('updatedAt', 'updatedAt');
-        }
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB'));
-  });
-  return dbPromise;
-}
 
 function tx(db: IDBDatabase, kind: LibraryKind, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(kind, mode).objectStore(kind);
-}
-
-function awaitTx<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
 }
 
 export async function record(
@@ -66,7 +35,7 @@ export async function record(
 ): Promise<void> {
   const db = await openDb();
   const store = tx(db, kind, 'readwrite');
-  const existing = (await awaitTx(store.get(entry.hash))) as LibraryEntry | undefined;
+  const existing = (await awaitReq(store.get(entry.hash))) as LibraryEntry | undefined;
   const now = Date.now();
   const full: LibraryEntry = {
     ...entry,
@@ -75,7 +44,7 @@ export async function record(
     addedAt: existing?.addedAt ?? now,
     updatedAt: now,
   };
-  await awaitTx(store.put(full));
+  await awaitReq(store.put(full));
   if (kind === 'history') await trimToLimit(kind, HISTORY_LIMIT);
 }
 
@@ -86,10 +55,10 @@ export async function record(
 export async function updatePosition(hash: string, scrollY: number): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STORES, 'readwrite');
+    const t = db.transaction(LIBRARY_STORES, 'readwrite');
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
-    for (const kind of STORES) {
+    for (const kind of LIBRARY_STORES) {
       const store = t.objectStore(kind);
       const getReq = store.get(hash);
       getReq.onsuccess = () => {
@@ -106,9 +75,9 @@ export async function updatePosition(hash: string, scrollY: number): Promise<voi
 export async function getPosition(hash: string): Promise<number | undefined> {
   const db = await openDb();
   return new Promise((resolve) => {
-    const t = db.transaction(STORES, 'readonly');
+    const t = db.transaction(LIBRARY_STORES, 'readonly');
     let found: number | undefined;
-    for (const kind of STORES) {
+    for (const kind of LIBRARY_STORES) {
       const req = t.objectStore(kind).get(hash);
       req.onsuccess = () => {
         const e = req.result as LibraryEntry | undefined;
@@ -123,18 +92,18 @@ export async function getPosition(hash: string): Promise<number | undefined> {
 export async function list(kind: LibraryKind): Promise<LibraryEntry[]> {
   const db = await openDb();
   const store = tx(db, kind, 'readonly');
-  const all = (await awaitTx(store.getAll())) as LibraryEntry[];
+  const all = (await awaitReq(store.getAll())) as LibraryEntry[];
   return all.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function remove(kind: LibraryKind, hash: string): Promise<void> {
   const db = await openDb();
-  await awaitTx(tx(db, kind, 'readwrite').delete(hash));
+  await awaitReq(tx(db, kind, 'readwrite').delete(hash));
 }
 
 export async function has(kind: LibraryKind, hash: string): Promise<boolean> {
   const db = await openDb();
-  const key = await awaitTx(tx(db, kind, 'readonly').getKey(hash));
+  const key = await awaitReq(tx(db, kind, 'readonly').getKey(hash));
   return key !== undefined;
 }
 
@@ -162,7 +131,7 @@ export async function collectReferencedMediaIds(): Promise<{
 }> {
   const ids = new Set<string>();
   let hasOpaqueEntries = false;
-  for (const kind of STORES) {
+  for (const kind of LIBRARY_STORES) {
     const entries = await list(kind);
     for (const e of entries) {
       if (!e.mediaIds) {
