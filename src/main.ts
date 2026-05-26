@@ -54,6 +54,8 @@ import {
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
 import { initSdk } from './sync/setup';
+import { openSettingsDialog } from './ui/settings-dialog';
+import { openBackupDialog } from './ui/backup-dialog';
 import {
   getMedia,
   hasMedia,
@@ -1380,6 +1382,8 @@ function openOverflowMenu(anchor: HTMLElement) {
     });
   }
 
+  items.push({ label: 'Синхронизация…', action: openSettingsDialog });
+  items.push({ label: 'Бэкап…', action: openBackupDialog });
   items.push({ label: t('toolbar.btn.new'), action: openNewDocument, primary: true });
 
   const menu = document.createElement('div');
