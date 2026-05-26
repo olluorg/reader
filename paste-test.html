@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Paste verification</title>
+  </head>
+  <body>
+    <pre id="results" style="white-space: pre-wrap; font-family: monospace"></pre>
+    <div id="editor"></div>
+    <script type="module">
+      import { createEditor } from '/src/editor/milkdown.ts';
+      import '@milkdown/crepe/theme/common/style.css';
+
+      const out = document.getElementById('results');
+      const log = (s) => {
+        out.textContent += s + '\n';
+        console.log('[TEST]', s);
+      };
+
+      const editor = await createEditor({
+        root: document.getElementById('editor'),
+        initialMarkdown: '',
+        mode: 'edit',
+      });
+
+      const view = document.querySelector('.milkdown .ProseMirror');
+      if (!view) {
+        log('FAIL: ProseMirror view not found');
+        document.title = 'DONE';
+        throw new Error('no view');
+      }
+      view.focus();
+
+      async function pasteAndRead(label, html, plain) {
+        await editor.replaceMarkdown('');
+        // wait for the async listener
+        await new Promise((r) => setTimeout(r, 50));
+        view.focus();
+        const dt = new DataTransfer();
+        if (html) dt.setData('text/html', html);
+        if (plain) dt.setData('text/plain', plain);
+        const ev = new ClipboardEvent('paste', {
+          clipboardData: dt,
+          bubbles: true,
+          cancelable: true,
+        });
+        view.dispatchEvent(ev);
+        await new Promise((r) => setTimeout(r, 100));
+        const md = editor.getMarkdown().trim();
+        log('--- ' + label + ' ---');
+        log(md || '(empty)');
+        log('');
+      }
+
+      try {
+        await pasteAndRead(
+          '1. inline formatting (bold/italic/code/link)',
+          '<p>Hello <strong>bold</strong> and <em>italic</em> and <code>x = 1</code> and <a href="https://example.com">link</a>.</p>'
+        );
+
+        await pasteAndRead(
+          '2. headings + paragraph',
+          '<h1>Title</h1><h2>Sub</h2><p>Body text.</p>'
+        );
+
+        await pasteAndRead(
+          '3. lists (ul/ol)',
+          '<ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol>'
+        );
+
+        await pasteAndRead(
+          '4. blockquote + code block',
+          '<blockquote><p>quoted</p></blockquote><pre><code>const x = 1;\n</code></pre>'
+        );
+
+        await pasteAndRead(
+          '5. table',
+          '<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>'
+        );
+
+        await pasteAndRead(
+          '6. image (external)',
+          '<p>before</p><img src="https://example.com/cat.png" alt="cat" /><p>after</p>'
+        );
+
+        await pasteAndRead(
+          '7. Google Docs wrapper',
+          '<meta charset="utf-8"><b style="font-weight:normal" id="docs-internal-guid-abc"><p dir="ltr"><span style="font-weight:700">Bold from Docs</span> and plain.</p><p dir="ltr">Second para.</p></b>'
+        );
+
+        await pasteAndRead(
+          '8. plain markdown text (no html)',
+          null,
+          '# Heading\n\nSome **bold** and *italic* with [link](https://e.com).\n\n- a\n- b'
+        );
+
+        await pasteAndRead(
+          '9. mixed: paragraph + nested list with formatting',
+          '<p>Intro <strong>strong</strong>.</p><ul><li>item <em>em</em></li><li>another <code>code</code> bit<ul><li>nested</li></ul></li></ul>'
+        );
+
+        log('=== ALL DONE ===');
+      } catch (e) {
+        log('ERROR: ' + e.message);
+      } finally {
+        document.title = 'DONE';
+      }
+    </script>
+  </body>
+</html>
