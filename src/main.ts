@@ -617,7 +617,7 @@ async function loadMediaByUrl(
   }
   try {
     const payload = await decodeMedia(hash, state.password);
-    const bytes = fromBase64Url(payload.bytesB64);
+    const bytes = payload.bytes;
     await putMedia({
       id: payload.id,
       mime: payload.mime,
@@ -829,7 +829,7 @@ function pickImageFile(): Promise<File | null> {
 async function handleMediaLanding(hash: string): Promise<boolean> {
   try {
     const payload = await decodeMedia(hash);
-    const bytes = fromBase64Url(payload.bytesB64);
+    const bytes = payload.bytes;
     await putMedia({
       id: payload.id,
       mime: payload.mime,
@@ -1279,7 +1279,7 @@ function renderToolbar(): HTMLElement {
           name: entry.name,
           width: entry.width,
           height: entry.height,
-          bytesB64: entry.base64,
+          bytes: fromBase64Url(entry.base64),
         };
       },
       onGenerated: (gen) => {

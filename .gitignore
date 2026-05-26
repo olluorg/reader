@@ -1,6 +1,14 @@
 node_modules
 dist
+build
+coverage
 .DS_Store
 .vscode
+.env
+.env.*
+!.env.example
 *.log
 *.tsbuildinfo
+
+# Local Claude Code permissions (per-developer)
+.claude/settings.local.json

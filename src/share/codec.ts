@@ -28,6 +28,7 @@ import type { DocumentPayload, MediaRef, Mode, PartHeader, ShareOptions } from '
 const VERSION_LEGACY = 1;
 const VERSION_PARTS = 2;
 const VERSION_MEDIA = 3;
+const VERSION_MEDIA_V2 = 4;
 const SALT_LEN = 16;
 const IV_LEN = 12;
 const DOC_ID_LEN = 8;
@@ -256,14 +257,21 @@ export function buildUrl(hash: string): string {
 }
 
 // ───────────────────────────────────────────────────────────
-// Media envelopes (version 3)
+// Media envelopes
 //
+// Version 3 (legacy):
 //   byte 0:  version = 3
 //   byte 1:  flags (bit 2 encrypted, bits 3-4 compression — same layout as
 //            the doc envelope so the crypto/compression code can be shared)
 //   if encrypted: salt(16) iv(12)
 //   rest: compressed (and optionally encrypted) JSON:
 //         { id, mime, name?, width?, height?, bytesB64 }
+//
+// Version 4 (current): same envelope, but the inner body is binary:
+//   [u16 LE: jsonLen][headerJsonBytes][rawImageBytes]
+// where headerJson is { id, mime, name?, width?, height? } — no bytes field.
+// Skipping base64-in-JSON avoids the 4/3 inflation that brotli only partially
+// recovers, saving ~5–15% on the final URL depending on image entropy.
 //
 // Media URLs do NOT carry mode bits (an image is just an image). The peek
 // path looks at byte 0 only, so this slots in next to the doc envelopes
@@ -276,8 +284,16 @@ export interface MediaPayload {
   name?: string;
   width?: number;
   height?: number;
-  /** base64 (no data:URL prefix) — same shape used in IDB. */
-  bytesB64: string;
+  /** Raw decoded image bytes. */
+  bytes: Bytes;
+}
+
+interface MediaHeader {
+  id: string;
+  mime: string;
+  name?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface EncodedMedia {
@@ -298,15 +314,30 @@ export function isMediaHash(hash: string): boolean {
   } catch {
     return false;
   }
-  return bytes.length >= 2 && bytes[0] === VERSION_MEDIA;
+  return bytes.length >= 2 && (bytes[0] === VERSION_MEDIA || bytes[0] === VERSION_MEDIA_V2);
 }
 
 export async function encodeMedia(
   payload: MediaPayload,
   opts: MediaEncodeOptions = {},
 ): Promise<EncodedMedia> {
-  const json = new TextEncoder().encode(JSON.stringify(payload)) as Bytes;
-  const { data: compressed, algo } = await compress(json);
+  const header: MediaHeader = {
+    id: payload.id,
+    mime: payload.mime,
+    name: payload.name,
+    width: payload.width,
+    height: payload.height,
+  };
+  const headerBytes = new TextEncoder().encode(JSON.stringify(header)) as Bytes;
+  if (headerBytes.length > 0xffff) throw new Error('media header too large');
+
+  const inner = new Uint8Array(2 + headerBytes.length + payload.bytes.length);
+  inner[0] = headerBytes.length & 0xff;
+  inner[1] = (headerBytes.length >> 8) & 0xff;
+  inner.set(headerBytes, 2);
+  inner.set(payload.bytes, 2 + headerBytes.length);
+
+  const { data: compressed, algo } = await compress(inner as Bytes);
 
   let body: Bytes = compressed;
   let salt: Bytes | null = null;
@@ -324,7 +355,7 @@ export async function encodeMedia(
   const headerLen = 2 + cryptoHeaderLen;
 
   const out = new Uint8Array(headerLen + body.length);
-  out[0] = VERSION_MEDIA;
+  out[0] = VERSION_MEDIA_V2;
   out[1] = flags;
   let off = 2;
   if (salt && iv) {
@@ -346,8 +377,7 @@ export async function encodeMedia(
       name: payload.name,
       width: payload.width,
       height: payload.height,
-      // size is the decoded bytes length, not the encoded payload.
-      size: Math.floor((payload.bytesB64.length * 3) / 4),
+      size: payload.bytes.length,
     },
   };
 }
@@ -369,12 +399,17 @@ export function inlineMediaInMarkdown(
   return markdown.replace(/reader-media:([0-9a-f]{16})/g, (match, id) => {
     const p = payloads.get(id);
     if (!p) return match;
-    // bytesB64 uses URL-safe alphabet (no padding) — convert back to standard
-    // base64 with padding so it's a valid `data:` URI.
-    const std = p.bytesB64.replace(/-/g, '+').replace(/_/g, '/');
-    const pad = (4 - (std.length % 4)) % 4;
-    return `data:${p.mime};base64,${std + '='.repeat(pad)}`;
+    return `data:${p.mime};base64,${bytesToStandardBase64(p.bytes)}`;
   });
+}
+
+function bytesToStandardBase64(bytes: Bytes): string {
+  let str = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    str += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(str);
 }
 
 export async function decodeMedia(
@@ -383,7 +418,10 @@ export async function decodeMedia(
 ): Promise<MediaPayload> {
   const bytes = fromBase64Url(hash);
   if (bytes.length < 2) throw new Error('Invalid media payload');
-  if (bytes[0] !== VERSION_MEDIA) throw new Error('Not a media payload');
+  const version = bytes[0];
+  if (version !== VERSION_MEDIA && version !== VERSION_MEDIA_V2) {
+    throw new Error('Not a media payload');
+  }
 
   const flags = bytes[1];
   const encrypted = (flags & FLAG_ENCRYPTED) !== 0;
@@ -421,6 +459,32 @@ export async function decodeMedia(
     throw new Error(`Decompression failed: ${(err as Error).message}`);
   }
 
-  const json = new TextDecoder().decode(decompressed);
-  return JSON.parse(json) as MediaPayload;
+  if (version === VERSION_MEDIA) {
+    // Legacy: JSON with base64 bytes field.
+    const json = new TextDecoder().decode(decompressed);
+    const legacy = JSON.parse(json) as MediaHeader & { bytesB64: string };
+    return {
+      id: legacy.id,
+      mime: legacy.mime,
+      name: legacy.name,
+      width: legacy.width,
+      height: legacy.height,
+      bytes: fromBase64Url(legacy.bytesB64),
+    };
+  }
+
+  // v4: [u16 LE jsonLen][headerJson][rawBytes]
+  if (decompressed.length < 2) throw new Error('Truncated media body');
+  const jsonLen = decompressed[0] | (decompressed[1] << 8);
+  if (decompressed.length < 2 + jsonLen) throw new Error('Truncated media header');
+  const headerJson = new TextDecoder().decode(decompressed.subarray(2, 2 + jsonLen));
+  const header = JSON.parse(headerJson) as MediaHeader;
+  return {
+    id: header.id,
+    mime: header.mime,
+    name: header.name,
+    width: header.width,
+    height: header.height,
+    bytes: sliceCopy(decompressed, 2 + jsonLen),
+  };
 }
