@@ -53,6 +53,7 @@ import {
   type LibraryKind,
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
+import { initSdk } from './sync/setup';
 import {
   getMedia,
   hasMedia,
@@ -857,6 +858,19 @@ async function handleMediaLanding(hash: string): Promise<boolean> {
 }
 
 async function bootstrap() {
+  // MUST happen before any other module touches IndexedDB so the SDK proxy
+  // can hook the `reader` DB's onupgradeneeded and inject _outbox/_kv/_meta.
+  await initSdk({
+    defaultServerUrl:
+      (import.meta.env['VITE_OLLU_SERVER'] as string | undefined) ??
+      'http://localhost:8080',
+    googleClientId: import.meta.env['VITE_OLLU_GOOGLE_CLIENT_ID'] as
+      | string
+      | undefined,
+  }).catch((err) => {
+    console.warn('[sync] init failed, app continues without sync:', err);
+  });
+
   const hash = location.hash.slice(1);
   if (hash) {
     // Media share URLs are routed before doc-decoding — they don't represent
