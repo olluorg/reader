@@ -21,7 +21,11 @@ export interface LibraryEntry {
   updatedAt: number;
 }
 
-const HISTORY_LIMIT = 200;
+// Capped low: with the sync SDK in the picture, every history record propagates
+// to other devices. 20 keeps the working set small while still useful as a
+// "recent" list. After applying incoming ops the engine re-runs trimToLimit
+// so each device converges to its own 20 most-recent-globally.
+const HISTORY_LIMIT = 20;
 
 function tx(db: IDBDatabase, kind: LibraryKind, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(kind, mode).objectStore(kind);
