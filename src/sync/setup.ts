@@ -13,9 +13,9 @@ import {
   AuthClient,
   GoogleAuthProvider,
   HLClock,
-  HttpSseTransport,
   ServerUrlConfig,
   SyncEngine,
+  WebSocketTransport,
   type AuthProvider,
 } from '@ollu/sdk-core';
 import { installIdbProxy, type IdbProxy } from '@ollu/sdk-idb';
@@ -32,7 +32,7 @@ export interface SdkBundle {
   readonly clock: HLClock;
   readonly config: ServerUrlConfig;
   readonly auth: AuthClient;
-  readonly transport: HttpSseTransport;
+  readonly transport: WebSocketTransport;
   readonly engine: SyncEngine;
   /** Start the sync engine if we already have a session. Idempotent. */
   startIfAuthed(): Promise<void>;
@@ -127,7 +127,7 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
   });
   await auth.hydrate();
 
-  const transport = new HttpSseTransport({
+  const transport = new WebSocketTransport({
     serverUrl: () => config.get(),
     appId: APP_ID,
     sessionToken: () => auth.sessionToken(),

@@ -17,9 +17,9 @@
     "@fontsource-variable/source-serif-4": "^5.1.0",
     "@milkdown/crepe": "^7.5.0",
     "@milkdown/kit": "^7.5.0",
-    "@ollu/sdk-backup-gdrive": "https://github.com/olluorg/micro-platform/releases/download/v0.1.4/ollu-sdk-backup-gdrive-0.1.4.tgz",
-    "@ollu/sdk-core": "https://github.com/olluorg/micro-platform/releases/download/v0.1.4/ollu-sdk-core-0.1.4.tgz",
-    "@ollu/sdk-idb": "https://github.com/olluorg/micro-platform/releases/download/v0.1.4/ollu-sdk-idb-0.1.4.tgz",
-    "@ollu/shared-types": "https://github.com/olluorg/micro-platform/releases/download/v0.1.4/ollu-shared-types-0.1.4.tgz"
+    "@ollu/sdk-backup-gdrive": "https://github.com/olluorg/micro-platform/releases/download/v0.2.1/ollu-sdk-backup-gdrive-0.2.1.tgz",
+    "@ollu/sdk-core": "https://github.com/olluorg/micro-platform/releases/download/v0.2.1/ollu-sdk-core-0.2.1.tgz",
+    "@ollu/sdk-idb": "https://github.com/olluorg/micro-platform/releases/download/v0.2.1/ollu-sdk-idb-0.2.1.tgz",
+    "@ollu/shared-types": "https://github.com/olluorg/micro-platform/releases/download/v0.2.1/ollu-shared-types-0.2.1.tgz"
   }
 }

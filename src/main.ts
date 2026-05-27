@@ -172,9 +172,9 @@ function scheduleHashSync() {
 
 // How long to wait after the last edit before persisting the draft to `mine`.
 // Longer than HASH_SYNC_DEBOUNCE_MS so the URL hash is settled by the time
-// we read it, and so quick keystrokes don't generate one delete+put pair
-// per typed character.
-const DRAFT_SAVE_DEBOUNCE_MS = 4000;
+// we read it. Tuned low so changes propagate to other devices live over the
+// WebSocket transport; each save cycle costs ~2 outbox ops (delete + put).
+const DRAFT_SAVE_DEBOUNCE_MS = 500;
 let draftSaveTimer: number | null = null;
 
 function scheduleDraftSave() {
