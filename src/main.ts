@@ -51,6 +51,7 @@ import {
   collectReferencedMediaIds,
   deriveTitle,
   has as libraryHas,
+  remove as libraryRemove,
   type LibraryKind,
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
@@ -130,6 +131,13 @@ interface AppState {
   bypassSizeLimit: boolean;
   /** Live raw-view <textarea> — non-null only while raw view is mounted. */
   rawTextarea: HTMLTextAreaElement | null;
+  /**
+   * Hash currently representing this doc in the `mine` library. Updated by
+   * the draft auto-save when edits change the URL hash, and by Share when
+   * a new share-link is generated. Stays null when the user is viewing a
+   * doc they don't own (history / saved entries).
+   */
+  draftMineHash: string | null;
 }
 
 const state: AppState = {
@@ -142,6 +150,7 @@ const state: AppState = {
   editorFailed: false,
   bypassSizeLimit: false,
   rawTextarea: null,
+  draftMineHash: null,
 };
 
 let statusBarEl: HTMLElement | null = null;
@@ -159,6 +168,55 @@ function scheduleHashSync() {
     hashSyncTimer = null;
     void syncHashNow();
   }, HASH_SYNC_DEBOUNCE_MS);
+}
+
+// How long to wait after the last edit before persisting the draft to `mine`.
+// Longer than HASH_SYNC_DEBOUNCE_MS so the URL hash is settled by the time
+// we read it, and so quick keystrokes don't generate one delete+put pair
+// per typed character.
+const DRAFT_SAVE_DEBOUNCE_MS = 4000;
+let draftSaveTimer: number | null = null;
+
+function scheduleDraftSave() {
+  if (state.parts) return; // assembled-from-parts view isn't a draft
+  if (state.mode !== 'edit') return; // viewer / commenter doesn't own
+  if (draftSaveTimer !== null) clearTimeout(draftSaveTimer);
+  draftSaveTimer = window.setTimeout(() => {
+    draftSaveTimer = null;
+    void autoSaveDraft();
+  }, DRAFT_SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Persist the currently-edited doc as a single entry in `mine`. The entry's
+ * primary key is the URL hash, which changes with the doc contents on every
+ * edit — so we evict the previous tracked entry first to avoid accumulating
+ * one row per save. The net cost is two outbox ops per save cycle (delete +
+ * put), debounced by DRAFT_SAVE_DEBOUNCE_MS.
+ */
+async function autoSaveDraft(): Promise<void> {
+  const currentHash = location.hash.slice(1);
+  if (!currentHash) return;
+  if (state.parts) return;
+  if (state.mode !== 'edit') return;
+  if (currentHash === state.draftMineHash) return;
+  const prev = state.draftMineHash;
+  state.draftMineHash = currentHash;
+  if (prev) {
+    await libraryRemove('mine', prev).catch((err) =>
+      console.warn('draft prune failed:', err),
+    );
+  }
+  const url = buildUrl(currentHash);
+  await recordEntry('mine', {
+    hash: currentHash,
+    url,
+    title: deriveTitle(state.doc.markdown, state.doc.title),
+    mode: state.mode,
+    encrypted: state.password !== undefined,
+    size: url.length,
+    mediaIds: collectDocMediaIds(state.doc),
+  }).catch((err) => console.warn('draft save failed:', err));
 }
 
 async function syncHashNow() {
@@ -261,6 +319,9 @@ async function loadFromHash(hash: string): Promise<boolean> {
   state.mode = ownedByMe ? 'edit' : result.mode;
   state.password = result.password;
   state.loadedFromHash = hash;
+  // Track this hash as the current draft entry when it's ours; otherwise the
+  // auto-saver shouldn't touch the library (we're viewing someone else's doc).
+  state.draftMineHash = ownedByMe ? hash : null;
 
   const url = buildUrl(hash);
   recordEntry('history', {
@@ -971,6 +1032,7 @@ async function render() {
           state.doc.markdown = md;
           updateStatus(status, md);
           scheduleHashSync();
+          scheduleDraftSave();
           debouncedLiveLimitCheck(md);
           schedulePreviewRefresh(inner, md);
         },
@@ -1049,6 +1111,7 @@ function mountRawView(inner: HTMLElement, status: HTMLElement, dueToSize: boolea
     state.doc.markdown = ta.value;
     updateStatus(status, ta.value);
     scheduleHashSync();
+    scheduleDraftSave();
     debouncedLiveLimitCheck(ta.value);
   });
   inner.appendChild(ta);
@@ -1322,6 +1385,11 @@ function renderToolbar(): HTMLElement {
         };
       },
       onGenerated: (gen) => {
+        // Share replaces the draft entry instead of creating a parallel one.
+        // The previous draft hash (if any) is evicted so `mine` keeps a
+        // single row per logical doc.
+        const prevDraft = state.draftMineHash;
+        state.draftMineHash = gen.hash;
         recordEntry('mine', {
           hash: gen.hash,
           url: gen.url,
@@ -1331,6 +1399,9 @@ function renderToolbar(): HTMLElement {
           size: gen.size,
           mediaIds: collectDocMediaIds(gen.doc),
         }).catch((err) => console.warn('mine save failed:', err));
+        if (prevDraft && prevDraft !== gen.hash) {
+          libraryRemove('mine', prevDraft).catch(() => {});
+        }
         setPosition(gen.hash, Math.round(window.scrollY)).catch(() => {});
         // Shared markdown becomes the new baseline so the *next* version's
         // diff captures only the edits between this share and the next.
@@ -1339,6 +1410,11 @@ function renderToolbar(): HTMLElement {
         if (state.doc.versions?.length) renderToolbarInPlace();
       },
       onSplitGenerated: (gen) => {
+        // Split-share generates one URL per part — each part is its own
+        // entry in mine (you may want to keep / share them individually).
+        // We still evict the prior single-doc draft to avoid keeping a
+        // stale row alongside the new set of parts.
+        const prevDraft = state.draftMineHash;
         const mediaIds = collectDocMediaIds(gen.doc);
         for (const p of gen.parts) {
           recordEntry('mine', {
@@ -1351,6 +1427,12 @@ function renderToolbar(): HTMLElement {
             mediaIds,
           }).catch((err) => console.warn('mine save failed:', err));
         }
+        if (prevDraft) {
+          libraryRemove('mine', prevDraft).catch(() => {});
+        }
+        // No single hash to track after split; subsequent edits start a
+        // fresh draft cycle.
+        state.draftMineHash = null;
         state.baselineMarkdown = gen.doc.markdown;
         if (state.doc.versions?.length) renderToolbarInPlace();
       },
@@ -1485,6 +1567,9 @@ async function openNewDocument() {
   state.baselineMarkdown = result.doc.markdown;
   state.loadedFromHash = null;
   state.parts = null;
+  // Fresh document: no prior `mine` row to track. The next edit's
+  // scheduleDraftSave will create one once the URL hash is generated.
+  state.draftMineHash = null;
   state.editorFailed = false;
   state.bypassSizeLimit = false;
   render();
@@ -1601,6 +1686,7 @@ window.addEventListener('hashchange', () => {
     state.parts = null;
     state.editorFailed = false;
     state.bypassSizeLimit = false;
+    state.draftMineHash = null;
     render();
     return;
   }
@@ -1609,6 +1695,9 @@ window.addEventListener('hashchange', () => {
   state.parts = null;
   state.editorFailed = false;
   state.bypassSizeLimit = false;
+  // loadFromHash will (re-)populate draftMineHash based on whether the
+  // hash exists in `mine`.
+  state.draftMineHash = null;
   loadFromHash(hash).then((ok) => {
     if (!ok) return;
     render().then(() => {
