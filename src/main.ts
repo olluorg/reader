@@ -1252,6 +1252,8 @@ function renderToolbar(): HTMLElement {
       ${state.parts && partLoaded < partTotal
         ? `<button class="btn btn--ghost toolbar__action--collapsible" data-action="parts" title="${escapeHtml(t('toolbar.btn.parts.title'))}">${escapeHtml(t('toolbar.btn.parts', { loaded: partLoaded, total: partTotal }))}</button>`
         : ''}
+      <button class="btn btn--ghost toolbar__action--collapsible" data-action="sync" title="Синхронизация">Sync</button>
+      <button class="btn btn--ghost toolbar__action--collapsible" data-action="backup" title="Бэкап / восстановление">Backup</button>
       <button class="btn btn--ghost toolbar__action--collapsible" data-action="new">${escapeHtml(t('toolbar.btn.new'))}</button>
       <button class="btn btn--primary" data-action="share">${escapeHtml(t('toolbar.btn.share'))}</button>
     </div>
@@ -1270,6 +1272,8 @@ function renderToolbar(): HTMLElement {
     });
   });
   toolbar.querySelector('[data-action="parts"]')?.addEventListener('click', () => openPartsCollector());
+  toolbar.querySelector('[data-action="sync"]')!.addEventListener('click', openSettingsDialog);
+  toolbar.querySelector('[data-action="backup"]')!.addEventListener('click', openBackupDialog);
   toolbar.querySelector('[data-action="share"]')!.addEventListener('click', () => {
     openShareDialog({
       baselineMarkdown: state.baselineMarkdown,
