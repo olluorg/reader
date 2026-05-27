@@ -50,6 +50,7 @@ import {
   record as recordEntry,
   collectReferencedMediaIds,
   deriveTitle,
+  has as libraryHas,
   type LibraryKind,
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
@@ -253,7 +254,11 @@ async function loadFromHash(hash: string): Promise<boolean> {
     state.parts = null;
     state.doc = result.doc;
   }
-  state.mode = result.mode;
+  // If the doc is in our `mine` library — even if synced from another device —
+  // we're the owner and should open it with edit rights regardless of what
+  // mode bits the URL carries (those govern what *recipients* of the URL get).
+  const ownedByMe = await libraryHas('mine', hash).catch(() => false);
+  state.mode = ownedByMe ? 'edit' : result.mode;
   state.password = result.password;
   state.loadedFromHash = hash;
 
