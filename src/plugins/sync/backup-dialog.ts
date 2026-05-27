@@ -1,7 +1,7 @@
 import { defaultSnapshotName, LocalFileTarget, type BackupInfo } from '@ollu/sdk-core';
 import { GoogleDriveTarget } from '@ollu/sdk-backup-gdrive';
-import { getSdk } from '../sync/setup';
-import { showToast } from './toast';
+import { showToast } from '../../ui/toast';
+import { getSdk } from './setup';
 
 /**
  * Backup dialog: export the local state to a `.cbor` file or to Google

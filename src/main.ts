@@ -50,15 +50,24 @@ import {
   record as recordEntry,
   collectReferencedMediaIds,
   deriveTitle,
-  remove as libraryRemove,
   get as libraryGet,
-  list as libraryList,
   type LibraryKind,
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
-import { initSdk } from './sync/setup';
-import { openSettingsDialog } from './ui/settings-dialog';
-import { openBackupDialog } from './ui/backup-dialog';
+import {
+  MEDIA_HREF_PREFIX,
+  collectDocMediaIds,
+  extractMediaIds,
+} from './util/media-refs';
+import type { ReaderPluginContext } from './plugins/api';
+import {
+  bindContext,
+  callHook,
+  callHookAsync,
+  collectOverflowMenuItems,
+  collectToolbarButtons,
+  registerPlugin,
+} from './plugins/registry';
 import {
   getMedia,
   hasMedia,
@@ -102,11 +111,10 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_MAX_DIMENSION = 1600;
 const IMAGE_WEBP_QUALITY = 0.82;
 
-// Custom URL scheme used in markdown to reference a stored image.
-// `![alt](reader-media:<dHash hex>)` parses cleanly as a markdown image, so
-// the editor treats it as a normal <img> element — we just rewrite the src.
-const MEDIA_HREF_PREFIX = 'reader-media:';
-const MEDIA_HREF_REGEX = /reader-media:([0-9a-f]{16})/g;
+// MEDIA_HREF_PREFIX / extractMediaIds / collectDocMediaIds live in
+// src/util/media-refs.ts so the sync plugin (which needs to compute mediaIds
+// when persisting drafts) can use the same helpers without depending on
+// main.ts.
 
 interface PartsState {
   docId: string;
@@ -132,24 +140,6 @@ interface AppState {
   bypassSizeLimit: boolean;
   /** Live raw-view <textarea> — non-null only while raw view is mounted. */
   rawTextarea: HTMLTextAreaElement | null;
-  /**
-   * Hash currently representing this doc in the `mine` library. Updated by
-   * the draft auto-save when edits change the URL hash, and by Share when
-   * a new share-link is generated. Stays null when the user is viewing a
-   * doc they don't own (history / saved entries).
-   */
-  draftMineHash: string | null;
-  /**
-   * Stable identifier for the document currently in the editor. Lets us
-   * recognise remote edits (different hash, same docId) as continuations
-   * of the doc the user is viewing and swap the editor's content live.
-   */
-  currentDocId: string | null;
-  /**
-   * Set while applying a remote update to the editor so onChange doesn't
-   * treat the replacement as a local edit and bounce it back to the server.
-   */
-  applyingRemote: boolean;
 }
 
 const state: AppState = {
@@ -162,10 +152,15 @@ const state: AppState = {
   editorFailed: false,
   bypassSizeLimit: false,
   rawTextarea: null,
-  draftMineHash: null,
-  currentDocId: null,
-  applyingRemote: false,
 };
+
+/**
+ * Set while applyRemoteUpdate is rewriting the editor with a payload pulled
+ * from the sync layer. Reader's onChange/input handlers check this so the
+ * remote-applied content isn't bounced back to the sync layer as a local
+ * edit. Kept in main.ts (not the plugin) because the editor lives here.
+ */
+let suppressRemoteEcho = false;
 
 let statusBarEl: HTMLElement | null = null;
 
@@ -182,57 +177,6 @@ function scheduleHashSync() {
     hashSyncTimer = null;
     void syncHashNow();
   }, HASH_SYNC_DEBOUNCE_MS);
-}
-
-// How long to wait after the last edit before persisting the draft to `mine`.
-// Longer than HASH_SYNC_DEBOUNCE_MS so the URL hash is settled by the time
-// we read it. Tuned low so changes propagate to other devices live over the
-// WebSocket transport; each save cycle costs ~2 outbox ops (delete + put).
-const DRAFT_SAVE_DEBOUNCE_MS = 500;
-let draftSaveTimer: number | null = null;
-
-function scheduleDraftSave() {
-  if (state.parts) return; // assembled-from-parts view isn't a draft
-  if (state.mode !== 'edit') return; // viewer / commenter doesn't own
-  if (draftSaveTimer !== null) clearTimeout(draftSaveTimer);
-  draftSaveTimer = window.setTimeout(() => {
-    draftSaveTimer = null;
-    void autoSaveDraft();
-  }, DRAFT_SAVE_DEBOUNCE_MS);
-}
-
-/**
- * Persist the currently-edited doc as a single entry in `mine`. The entry's
- * primary key is the URL hash, which changes with the doc contents on every
- * edit — so we evict the previous tracked entry first to avoid accumulating
- * one row per save. The net cost is two outbox ops per save cycle (delete +
- * put), debounced by DRAFT_SAVE_DEBOUNCE_MS.
- */
-async function autoSaveDraft(): Promise<void> {
-  const currentHash = location.hash.slice(1);
-  if (!currentHash) return;
-  if (state.parts) return;
-  if (state.mode !== 'edit') return;
-  if (currentHash === state.draftMineHash) return;
-  if (!state.currentDocId) state.currentDocId = crypto.randomUUID();
-  const prev = state.draftMineHash;
-  state.draftMineHash = currentHash;
-  if (prev) {
-    await libraryRemove('mine', prev).catch((err) =>
-      console.warn('draft prune failed:', err),
-    );
-  }
-  const url = buildUrl(currentHash);
-  await recordEntry('mine', {
-    hash: currentHash,
-    url,
-    title: deriveTitle(state.doc.markdown, state.doc.title),
-    mode: state.mode,
-    encrypted: state.password !== undefined,
-    size: url.length,
-    docId: state.currentDocId,
-    mediaIds: collectDocMediaIds(state.doc),
-  }).catch((err) => console.warn('draft save failed:', err));
 }
 
 async function syncHashNow() {
@@ -331,17 +275,12 @@ async function loadFromHash(hash: string): Promise<boolean> {
   // If the doc is in our `mine` library — even if synced from another device —
   // we're the owner and should open it with edit rights regardless of what
   // mode bits the URL carries (those govern what *recipients* of the URL get).
-  const mineEntry = await libraryGet('mine', hash).catch(() => undefined);
-  const ownedByMe = mineEntry !== undefined;
+  const ownedByMe = await libraryGet('mine', hash)
+    .then((entry) => entry !== undefined)
+    .catch(() => false);
   state.mode = ownedByMe ? 'edit' : result.mode;
   state.password = result.password;
   state.loadedFromHash = hash;
-  // Track this hash as the current draft entry when it's ours; otherwise the
-  // auto-saver shouldn't touch the library (we're viewing someone else's doc).
-  state.draftMineHash = ownedByMe ? hash : null;
-  // Resume the doc's stable id if it had one — lets remote edits coming in
-  // under a new hash be recognised as the same doc.
-  state.currentDocId = mineEntry?.docId ?? null;
 
   const url = buildUrl(hash);
   recordEntry('history', {
@@ -353,6 +292,10 @@ async function loadFromHash(hash: string): Promise<boolean> {
     size: url.length,
     mediaIds: collectDocMediaIds(state.doc),
   }).catch((err) => console.warn('history save failed:', err));
+
+  // Plugins (e.g. sync) react to the document being loaded — they may need
+  // to set up internal tracking (docId resumption, etc.).
+  await callHookAsync('onDocLoaded', hash, ownedByMe);
   return true;
 }
 
@@ -429,24 +372,7 @@ function openPartsCollector(focusIndex?: number) {
 // Image / media support
 // ───────────────────────────────────────────────────────────
 
-function extractMediaIds(markdown: string): string[] {
-  const seen = new Set<string>();
-  for (const m of markdown.matchAll(MEDIA_HREF_REGEX)) seen.add(m[1]);
-  return Array.from(seen);
-}
-
-/**
- * Collect media ids referenced by a doc — union of what's in the manifest
- * and what the markdown body actually mentions (in case the manifest hasn't
- * been re-synced since the last edit). Stamped on every library entry so
- * the GC sweeper knows what to keep.
- */
-function collectDocMediaIds(doc: DocumentPayload): string[] {
-  const ids = new Set<string>();
-  for (const r of doc.media ?? []) ids.add(r.id);
-  for (const id of extractMediaIds(doc.markdown)) ids.add(id);
-  return Array.from(ids);
-}
+// extractMediaIds / collectDocMediaIds live in src/util/media-refs.ts.
 
 /**
  * Drop every media IDB row that isn't referenced by any library entry. The
@@ -946,18 +872,13 @@ async function handleMediaLanding(hash: string): Promise<boolean> {
 }
 
 async function bootstrap() {
-  // MUST happen before any other module touches IndexedDB so the SDK proxy
-  // can hook the `reader` DB's onupgradeneeded and inject _outbox/_kv/_meta.
-  await initSdk({
-    defaultServerUrl:
-      (import.meta.env['VITE_OLLU_SERVER'] as string | undefined) ??
-      'http://localhost:8080',
-    googleClientId: import.meta.env['VITE_OLLU_GOOGLE_CLIENT_ID'] as
-      | string
-      | undefined,
-  }).catch((err) => {
-    console.warn('[sync] init failed, app continues without sync:', err);
-  });
+  // Plugins (sync, future LLM-proxy etc.) opt-in via build-time env flags.
+  // Their onAppStart runs BEFORE anything else touches IndexedDB so a
+  // plugin like sync can install its IDB proxy in time to hook the open
+  // request's onupgradeneeded.
+  await loadPlugins();
+  bindContext(buildPluginContext());
+  await callHookAsync('onAppStart');
 
   const hash = location.hash.slice(1);
   if (hash) {
@@ -993,87 +914,81 @@ window.addEventListener('reader-library-changed', () => {
   void sweepUnusedMedia();
 });
 
-// SDK fires this from onIncoming after applying ops pulled from the sync
-// server. We need to re-paint the editor (so newly arrived media bytes
-// stop showing as placeholders) and refresh the toolbar (e.g. versions
-// count when a `mine` entry came in with a new version).
-window.addEventListener('ollu-incoming', (e) => {
-  const detail = (e as CustomEvent<{ stores: string[] }>).detail;
-  const stores = new Set(detail?.stores ?? []);
-  if (stores.has('media')) {
-    void paintMediaImages();
-  }
-  if (stores.has('mine')) {
-    void maybeAdoptRemoteUpdate();
-  }
-  // Library lists are read on dialog open, so they auto-refresh; just nudge
-  // the toolbar so version/parts counts catch up.
-  renderToolbarInPlace();
-});
-
 /**
- * After a sync batch updates `mine`, check whether the document the user
- * is currently editing was edited on another device (same docId, new
- * hash). If yes, decode the new payload and swap the editor's content in
- * place — no full re-render, cursor jumps once because Milkdown rebuilds
- * the tree but typing isn't interrupted by a full mount/unmount cycle.
+ * Replace the open document with a payload received from the sync layer
+ * (or any other source). Updates state, the editor, and the URL bar in
+ * one shot without bouncing through hashchange or the local-edit path.
  */
-async function maybeAdoptRemoteUpdate(): Promise<void> {
-  if (!state.currentDocId) return;
-  if (state.applyingRemote) return;
-  if (state.parts) return;
-  if (!state.editor && !state.rawTextarea) return;
-  let candidates: Array<{ hash: string; docId?: string; updatedAt: number }>;
+async function applyRemoteUpdate(
+  doc: DocumentPayload,
+  newHash: string,
+): Promise<void> {
+  suppressRemoteEcho = true;
   try {
-    candidates = await libraryList('mine');
-  } catch (err) {
-    console.warn('mine list failed:', err);
-    return;
-  }
-  const successor = candidates
-    .filter((c) => c.docId === state.currentDocId && c.hash !== state.draftMineHash)
-    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  if (!successor) return;
-
-  const decoded = await decodeWithPassword(successor.hash, state.password);
-  if (!decoded.ok) {
-    if (decoded.reason === 'decode') {
-      console.warn('remote update decode failed:', decoded.message);
-    }
-    return;
-  }
-
-  state.applyingRemote = true;
-  try {
-    state.doc = decoded.doc;
-    state.draftMineHash = successor.hash;
+    state.doc = doc;
     state.mode = 'edit';
     if (state.editor) {
-      await state.editor.replaceMarkdown(decoded.doc.markdown);
+      await state.editor.replaceMarkdown(doc.markdown);
     } else if (state.rawTextarea) {
-      state.rawTextarea.value = decoded.doc.markdown;
+      state.rawTextarea.value = doc.markdown;
     }
-    // Update the URL bar without bouncing through hashchange (lastWrittenHash
-    // is used by the existing handler to suppress our own writes).
-    lastWrittenHash = successor.hash;
+    lastWrittenHash = newHash;
     history.replaceState(
       null,
       '',
-      `${location.pathname}${location.search}#${successor.hash}`,
+      `${location.pathname}${location.search}#${newHash}`,
     );
     void paintMediaImages();
     installMissingPlaceholders();
-    state.baselineMarkdown = decoded.doc.markdown;
+    state.baselineMarkdown = doc.markdown;
   } catch (err) {
     console.warn('remote update apply failed:', err);
   } finally {
-    // Keep the flag held a moment so the editor's async markdownUpdated
-    // event (which fires *after* replaceMarkdown returns) doesn't trip
-    // the local-edit path and bounce the same content back to the server.
+    // Held briefly so the editor's asynchronous markdownUpdated event
+    // (which fires after replaceMarkdown returns) doesn't trip the
+    // local-edit path and bounce the same content back to the server.
     setTimeout(() => {
-      state.applyingRemote = false;
+      suppressRemoteEcho = false;
     }, 300);
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Plugins
+// ────────────────────────────────────────────────────────────────────────
+
+async function loadPlugins(): Promise<void> {
+  // Sync plugin is opt-in at build time. With VITE_OLLU_SYNC unset, Vite
+  // tree-shakes the entire @ollu/* dependency tree out of the bundle.
+  if (import.meta.env['VITE_OLLU_SYNC'] === '1') {
+    const mod = await import('./plugins/sync');
+    registerPlugin(mod.syncPlugin);
+  }
+}
+
+function buildPluginContext(): ReaderPluginContext {
+  return {
+    getDoc: () => state.doc,
+    getMode: () => state.mode,
+    getPassword: () => state.password,
+    getLoadedFromHash: () => state.loadedFromHash,
+    isPartsMode: () => state.parts !== null,
+    getEditor: () => state.editor,
+    getRawTextarea: () => state.rawTextarea,
+    getBaselineMarkdown: () => state.baselineMarkdown,
+    appendVersion: (v) => {
+      if (!state.doc.versions) state.doc.versions = [];
+      state.doc.versions.push(v);
+    },
+    applyRemoteUpdate,
+    decodeWithPassword,
+    paintMediaImages: async () => {
+      await paintMediaImages();
+    },
+    installMissingPlaceholders,
+    collectDocMediaIds,
+    refreshToolbar: renderToolbarInPlace,
+  };
 }
 
 async function render() {
@@ -1117,11 +1032,11 @@ async function render() {
         disableGfm: state.bypassSizeLimit,
         onChange: (md) => {
           if (state.parts) return;
-          if (state.applyingRemote) return;
+          if (suppressRemoteEcho) return;
           state.doc.markdown = md;
           updateStatus(status, md);
           scheduleHashSync();
-          scheduleDraftSave();
+          callHook('onDocEdited', md);
           debouncedLiveLimitCheck(md);
           schedulePreviewRefresh(inner, md);
         },
@@ -1197,11 +1112,11 @@ function mountRawView(inner: HTMLElement, status: HTMLElement, dueToSize: boolea
   ta.readOnly = state.mode === 'view';
   ta.addEventListener('input', () => {
     if (state.parts) return;
-    if (state.applyingRemote) return;
+    if (suppressRemoteEcho) return;
     state.doc.markdown = ta.value;
     updateStatus(status, ta.value);
     scheduleHashSync();
-    scheduleDraftSave();
+    callHook('onDocEdited', ta.value);
     debouncedLiveLimitCheck(ta.value);
   });
   inner.appendChild(ta);
@@ -1425,8 +1340,7 @@ function renderToolbar(): HTMLElement {
       ${state.parts && partLoaded < partTotal
         ? `<button class="btn btn--ghost toolbar__action--collapsible" data-action="parts" title="${escapeHtml(t('toolbar.btn.parts.title'))}">${escapeHtml(t('toolbar.btn.parts', { loaded: partLoaded, total: partTotal }))}</button>`
         : ''}
-      <button class="btn btn--ghost toolbar__action--collapsible" data-action="sync" title="Синхронизация">Sync</button>
-      <button class="btn btn--ghost toolbar__action--collapsible" data-action="backup" title="Бэкап / восстановление">Backup</button>
+      <span data-plugin-toolbar></span>
       <button class="btn btn--ghost toolbar__action--collapsible" data-action="new">${escapeHtml(t('toolbar.btn.new'))}</button>
       <button class="btn btn--primary" data-action="share">${escapeHtml(t('toolbar.btn.share'))}</button>
     </div>
@@ -1445,8 +1359,22 @@ function renderToolbar(): HTMLElement {
     });
   });
   toolbar.querySelector('[data-action="parts"]')?.addEventListener('click', () => openPartsCollector());
-  toolbar.querySelector('[data-action="sync"]')!.addEventListener('click', openSettingsDialog);
-  toolbar.querySelector('[data-action="backup"]')!.addEventListener('click', openBackupDialog);
+
+  // Replace the <span data-plugin-toolbar> marker with one button per
+  // contribution from registered plugins.
+  const pluginSlot = toolbar.querySelector('[data-plugin-toolbar]');
+  if (pluginSlot) {
+    const frag = document.createDocumentFragment();
+    for (const btn of collectToolbarButtons()) {
+      const el = document.createElement('button');
+      el.className = 'btn btn--ghost toolbar__action--collapsible';
+      el.textContent = btn.label;
+      if (btn.title) el.title = btn.title;
+      el.addEventListener('click', btn.action);
+      frag.appendChild(el);
+    }
+    pluginSlot.replaceWith(frag);
+  }
   toolbar.querySelector('[data-action="share"]')!.addEventListener('click', () => {
     openShareDialog({
       baselineMarkdown: state.baselineMarkdown,
@@ -1475,60 +1403,19 @@ function renderToolbar(): HTMLElement {
         };
       },
       onGenerated: (gen) => {
-        // Share replaces the draft entry instead of creating a parallel one.
-        // The previous draft hash (if any) is evicted so `mine` keeps a
-        // single row per logical doc.
-        const prevDraft = state.draftMineHash;
-        state.draftMineHash = gen.hash;
-        if (!state.currentDocId) state.currentDocId = crypto.randomUUID();
-        recordEntry('mine', {
-          hash: gen.hash,
-          url: gen.url,
-          title: deriveTitle(gen.doc.markdown, gen.doc.title),
-          mode: gen.mode,
-          encrypted: gen.encrypted,
-          size: gen.size,
-          docId: state.currentDocId,
-          mediaIds: collectDocMediaIds(gen.doc),
-        }).catch((err) => console.warn('mine save failed:', err));
-        if (prevDraft && prevDraft !== gen.hash) {
-          libraryRemove('mine', prevDraft).catch(() => {});
-        }
-        setPosition(gen.hash, Math.round(window.scrollY)).catch(() => {});
         // Shared markdown becomes the new baseline so the *next* version's
         // diff captures only the edits between this share and the next.
         state.baselineMarkdown = gen.doc.markdown;
         // Update toolbar if we just appended a version.
         if (state.doc.versions?.length) renderToolbarInPlace();
+        // Plugins (sync) react to the share — they may persist the entry,
+        // bump docId tracking, etc.
+        callHook('onShareGenerated', gen);
       },
       onSplitGenerated: (gen) => {
-        // Split-share generates one URL per part — each part is its own
-        // entry in mine (you may want to keep / share them individually).
-        // We still evict the prior single-doc draft to avoid keeping a
-        // stale row alongside the new set of parts.
-        const prevDraft = state.draftMineHash;
-        const docId = state.currentDocId ?? crypto.randomUUID();
-        const mediaIds = collectDocMediaIds(gen.doc);
-        for (const p of gen.parts) {
-          recordEntry('mine', {
-            hash: p.hash,
-            url: p.url,
-            title: `${deriveTitle(gen.doc.markdown, gen.doc.title)} · ${p.index + 1}/${p.total}`,
-            mode: gen.mode,
-            encrypted: gen.encrypted,
-            size: p.url.length,
-            docId,
-            mediaIds,
-          }).catch((err) => console.warn('mine save failed:', err));
-        }
-        if (prevDraft) {
-          libraryRemove('mine', prevDraft).catch(() => {});
-        }
-        // No single hash to track after split; subsequent edits start a
-        // fresh draft cycle.
-        state.draftMineHash = null;
         state.baselineMarkdown = gen.doc.markdown;
         if (state.doc.versions?.length) renderToolbarInPlace();
+        callHook('onSplitShareGenerated', gen);
       },
     });
   });
@@ -1582,8 +1469,9 @@ function openOverflowMenu(anchor: HTMLElement) {
     });
   }
 
-  items.push({ label: 'Синхронизация…', action: openSettingsDialog });
-  items.push({ label: 'Бэкап…', action: openBackupDialog });
+  for (const item of collectOverflowMenuItems()) {
+    items.push({ label: item.label, action: item.action });
+  }
   items.push({ label: t('toolbar.btn.new'), action: openNewDocument, primary: true });
 
   const menu = document.createElement('div');
@@ -1661,12 +1549,8 @@ async function openNewDocument() {
   state.baselineMarkdown = result.doc.markdown;
   state.loadedFromHash = null;
   state.parts = null;
-  // Fresh document: no prior `mine` row to track. The next edit's
-  // scheduleDraftSave will create one once the URL hash is generated.
-  state.draftMineHash = null;
-  // Mint a stable id so cross-device updates can recognise this as one doc.
-  state.currentDocId = crypto.randomUUID();
   state.editorFailed = false;
+  callHook('onNewDocument');
   state.bypassSizeLimit = false;
   render();
 }
@@ -1782,8 +1666,7 @@ window.addEventListener('hashchange', () => {
     state.parts = null;
     state.editorFailed = false;
     state.bypassSizeLimit = false;
-    state.draftMineHash = null;
-    state.currentDocId = null;
+    callHook('onHashCleared');
     render();
     return;
   }
@@ -1792,10 +1675,8 @@ window.addEventListener('hashchange', () => {
   state.parts = null;
   state.editorFailed = false;
   state.bypassSizeLimit = false;
-  // loadFromHash will (re-)populate draftMineHash + currentDocId based on
-  // whether the hash exists in `mine`.
-  state.draftMineHash = null;
-  state.currentDocId = null;
+  // loadFromHash will fire onDocLoaded which lets the sync plugin resume
+  // tracking; the hashchange path doesn't need its own reset.
   loadFromHash(hash).then((ok) => {
     if (!ok) return;
     render().then(() => {

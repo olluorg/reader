@@ -1,8 +1,5 @@
 /**
- * SDK wiring. Call initSdk() ONCE at the top of bootstrap(), BEFORE any
- * other module opens IndexedDB — the proxy must be in place before the
- * `reader` DB is opened so that `_outbox`, `_kv`, `_meta` are created
- * during onupgradeneeded.
+ * SDK wiring for the sync plugin.
  *
  * Configuration comes from Vite env vars:
  *   VITE_OLLU_SERVER          default server URL (overridable in settings)
@@ -19,8 +16,8 @@ import {
   type AuthProvider,
 } from '@ollu/sdk-core';
 import { installIdbProxy, type IdbProxy } from '@ollu/sdk-idb';
-import { DB_NAME, openDb } from '../storage/db';
-import { list } from '../storage/library';
+import { DB_NAME, openDb } from '../../storage/db';
+import { list } from '../../storage/library';
 
 const APP_ID = 'reader';
 const HISTORY_LIMIT = 20;
@@ -34,7 +31,6 @@ export interface SdkBundle {
   readonly auth: AuthClient;
   readonly transport: WebSocketTransport;
   readonly engine: SyncEngine;
-  /** Start the sync engine if we already have a session. Idempotent. */
   startIfAuthed(): Promise<void>;
 }
 
@@ -52,12 +48,6 @@ function getOrCreateDeviceId(): string {
   return id;
 }
 
-/**
- * After applying incoming ops the local history table may exceed
- * HISTORY_LIMIT. Trim the oldest entries locally — wrapped in
- * withSuppressedCapture so we don't propagate the deletes as ops and
- * fight other devices that may keep their own top-20.
- */
 async function trimHistoryAfterIncoming(proxy: IdbProxy): Promise<void> {
   const all = await list('history');
   if (all.length <= HISTORY_LIMIT) return;
@@ -84,9 +74,6 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
   if (bundle) return bundle;
 
   const clock = new HLClock(getOrCreateDeviceId());
-
-  // engine is created later but onLocalWrite needs a reference now — captured
-  // by closure and read lazily on each call.
   let engineRef: SyncEngine | null = null;
 
   const proxy = installIdbProxy({
@@ -97,9 +84,6 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
     onLocalWrite: () => engineRef?.schedule(),
   });
 
-  // Open the DB now so the proxy's upgrade hook runs and _outbox/_kv/_meta
-  // are created. Without this, config.load() and auth.hydrate() below would
-  // hang on the unresolved dbReady promise.
   await openDb();
   await proxy.ready();
 
@@ -132,8 +116,6 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
     appId: APP_ID,
     sessionToken: () => auth.sessionToken(),
     onUnauthorized: async () => {
-      // Best-effort refresh; if it fails, AuthClient clears the session and
-      // the engine will see no token on its next request.
       await auth.ensureFresh();
     },
   });
@@ -147,9 +129,6 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
     onIncoming: async (ops) => {
       await proxy.applyIncoming(ops);
       await trimHistoryAfterIncoming(proxy);
-      // Tell the rest of the app which stores got touched so it can repaint
-      // (media references, library lists, etc.). Bubbles + composed so any
-      // dialog/iframe listener picks it up.
       const stores = new Set(ops.map((o) => o.store));
       window.dispatchEvent(
         new CustomEvent('ollu-incoming', { detail: { stores: Array.from(stores) } }),
@@ -172,9 +151,6 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
     },
   };
 
-  // If a session is already in KV (returning visitor), start the engine
-  // immediately so the outbox flushes any writes made while offline.
   await bundle.startIfAuthed();
-
   return bundle;
 }

@@ -1,5 +1,5 @@
-import { getSdk } from '../sync/setup';
-import { showToast } from './toast';
+import { showToast } from '../../ui/toast';
+import { getSdk } from './setup';
 
 /**
  * Sync settings dialog. Shows server URL config, current sign-in state,
