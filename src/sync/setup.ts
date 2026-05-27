@@ -147,6 +147,13 @@ export async function initSdk(options: InitOptions): Promise<SdkBundle> {
     onIncoming: async (ops) => {
       await proxy.applyIncoming(ops);
       await trimHistoryAfterIncoming(proxy);
+      // Tell the rest of the app which stores got touched so it can repaint
+      // (media references, library lists, etc.). Bubbles + composed so any
+      // dialog/iframe listener picks it up.
+      const stores = new Set(ops.map((o) => o.store));
+      window.dispatchEvent(
+        new CustomEvent('ollu-incoming', { detail: { stores: Array.from(stores) } }),
+      );
     },
   });
   engineRef = engine;

@@ -912,6 +912,21 @@ window.addEventListener('reader-library-changed', () => {
   void sweepUnusedMedia();
 });
 
+// SDK fires this from onIncoming after applying ops pulled from the sync
+// server. We need to re-paint the editor (so newly arrived media bytes
+// stop showing as placeholders) and refresh the toolbar (e.g. versions
+// count when a `mine` entry came in with a new version).
+window.addEventListener('ollu-incoming', (e) => {
+  const detail = (e as CustomEvent<{ stores: string[] }>).detail;
+  const stores = new Set(detail?.stores ?? []);
+  if (stores.has('media')) {
+    void paintMediaImages();
+  }
+  // Library lists are read on dialog open, so they auto-refresh; just nudge
+  // the toolbar so version/parts counts catch up.
+  renderToolbarInPlace();
+});
+
 async function render() {
   if (state.editor) {
     await state.editor.destroy();
