@@ -11,6 +11,15 @@ export interface LibraryEntry {
   encrypted: boolean;
   size: number;
   /**
+   * Stable identifier for the *logical* document — survives across edits
+   * that change the hash. Set on `mine` entries so that when a remote edit
+   * arrives under a new hash we can recognise it as a continuation of the
+   * doc the user is currently viewing and swap the editor's content in
+   * place. Undefined for entries recorded before this field existed
+   * (treated as "no docId — separate from any open doc").
+   */
+  docId?: string;
+  /**
    * Media IDs referenced by this doc. Used as the "keep set" for media GC:
    * a media row in IDB is safe to drop only when no library entry references
    * it. Undefined on old entries (recorded before the field existed) — the
@@ -64,6 +73,15 @@ export async function has(kind: LibraryKind, hash: string): Promise<boolean> {
   const db = await openDb();
   const key = await awaitReq(tx(db, kind, 'readonly').getKey(hash));
   return key !== undefined;
+}
+
+export async function get(
+  kind: LibraryKind,
+  hash: string,
+): Promise<LibraryEntry | undefined> {
+  const db = await openDb();
+  const store = tx(db, kind, 'readonly');
+  return (await awaitReq(store.get(hash))) as LibraryEntry | undefined;
 }
 
 async function trimToLimit(kind: LibraryKind, limit: number): Promise<void> {

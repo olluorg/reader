@@ -50,8 +50,9 @@ import {
   record as recordEntry,
   collectReferencedMediaIds,
   deriveTitle,
-  has as libraryHas,
   remove as libraryRemove,
+  get as libraryGet,
+  list as libraryList,
   type LibraryKind,
 } from './storage/library';
 import { getPosition, setPosition } from './storage/positions';
@@ -138,6 +139,17 @@ interface AppState {
    * doc they don't own (history / saved entries).
    */
   draftMineHash: string | null;
+  /**
+   * Stable identifier for the document currently in the editor. Lets us
+   * recognise remote edits (different hash, same docId) as continuations
+   * of the doc the user is viewing and swap the editor's content live.
+   */
+  currentDocId: string | null;
+  /**
+   * Set while applying a remote update to the editor so onChange doesn't
+   * treat the replacement as a local edit and bounce it back to the server.
+   */
+  applyingRemote: boolean;
 }
 
 const state: AppState = {
@@ -151,6 +163,8 @@ const state: AppState = {
   bypassSizeLimit: false,
   rawTextarea: null,
   draftMineHash: null,
+  currentDocId: null,
+  applyingRemote: false,
 };
 
 let statusBarEl: HTMLElement | null = null;
@@ -200,6 +214,7 @@ async function autoSaveDraft(): Promise<void> {
   if (state.parts) return;
   if (state.mode !== 'edit') return;
   if (currentHash === state.draftMineHash) return;
+  if (!state.currentDocId) state.currentDocId = crypto.randomUUID();
   const prev = state.draftMineHash;
   state.draftMineHash = currentHash;
   if (prev) {
@@ -215,6 +230,7 @@ async function autoSaveDraft(): Promise<void> {
     mode: state.mode,
     encrypted: state.password !== undefined,
     size: url.length,
+    docId: state.currentDocId,
     mediaIds: collectDocMediaIds(state.doc),
   }).catch((err) => console.warn('draft save failed:', err));
 }
@@ -315,13 +331,17 @@ async function loadFromHash(hash: string): Promise<boolean> {
   // If the doc is in our `mine` library — even if synced from another device —
   // we're the owner and should open it with edit rights regardless of what
   // mode bits the URL carries (those govern what *recipients* of the URL get).
-  const ownedByMe = await libraryHas('mine', hash).catch(() => false);
+  const mineEntry = await libraryGet('mine', hash).catch(() => undefined);
+  const ownedByMe = mineEntry !== undefined;
   state.mode = ownedByMe ? 'edit' : result.mode;
   state.password = result.password;
   state.loadedFromHash = hash;
   // Track this hash as the current draft entry when it's ours; otherwise the
   // auto-saver shouldn't touch the library (we're viewing someone else's doc).
   state.draftMineHash = ownedByMe ? hash : null;
+  // Resume the doc's stable id if it had one — lets remote edits coming in
+  // under a new hash be recognised as the same doc.
+  state.currentDocId = mineEntry?.docId ?? null;
 
   const url = buildUrl(hash);
   recordEntry('history', {
@@ -983,10 +1003,78 @@ window.addEventListener('ollu-incoming', (e) => {
   if (stores.has('media')) {
     void paintMediaImages();
   }
+  if (stores.has('mine')) {
+    void maybeAdoptRemoteUpdate();
+  }
   // Library lists are read on dialog open, so they auto-refresh; just nudge
   // the toolbar so version/parts counts catch up.
   renderToolbarInPlace();
 });
+
+/**
+ * After a sync batch updates `mine`, check whether the document the user
+ * is currently editing was edited on another device (same docId, new
+ * hash). If yes, decode the new payload and swap the editor's content in
+ * place — no full re-render, cursor jumps once because Milkdown rebuilds
+ * the tree but typing isn't interrupted by a full mount/unmount cycle.
+ */
+async function maybeAdoptRemoteUpdate(): Promise<void> {
+  if (!state.currentDocId) return;
+  if (state.applyingRemote) return;
+  if (state.parts) return;
+  if (!state.editor && !state.rawTextarea) return;
+  let candidates: Array<{ hash: string; docId?: string; updatedAt: number }>;
+  try {
+    candidates = await libraryList('mine');
+  } catch (err) {
+    console.warn('mine list failed:', err);
+    return;
+  }
+  const successor = candidates
+    .filter((c) => c.docId === state.currentDocId && c.hash !== state.draftMineHash)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!successor) return;
+
+  const decoded = await decodeWithPassword(successor.hash, state.password);
+  if (!decoded.ok) {
+    if (decoded.reason === 'decode') {
+      console.warn('remote update decode failed:', decoded.message);
+    }
+    return;
+  }
+
+  state.applyingRemote = true;
+  try {
+    state.doc = decoded.doc;
+    state.draftMineHash = successor.hash;
+    state.mode = 'edit';
+    if (state.editor) {
+      await state.editor.replaceMarkdown(decoded.doc.markdown);
+    } else if (state.rawTextarea) {
+      state.rawTextarea.value = decoded.doc.markdown;
+    }
+    // Update the URL bar without bouncing through hashchange (lastWrittenHash
+    // is used by the existing handler to suppress our own writes).
+    lastWrittenHash = successor.hash;
+    history.replaceState(
+      null,
+      '',
+      `${location.pathname}${location.search}#${successor.hash}`,
+    );
+    void paintMediaImages();
+    installMissingPlaceholders();
+    state.baselineMarkdown = decoded.doc.markdown;
+  } catch (err) {
+    console.warn('remote update apply failed:', err);
+  } finally {
+    // Keep the flag held a moment so the editor's async markdownUpdated
+    // event (which fires *after* replaceMarkdown returns) doesn't trip
+    // the local-edit path and bounce the same content back to the server.
+    setTimeout(() => {
+      state.applyingRemote = false;
+    }, 300);
+  }
+}
 
 async function render() {
   if (state.editor) {
@@ -1029,6 +1117,7 @@ async function render() {
         disableGfm: state.bypassSizeLimit,
         onChange: (md) => {
           if (state.parts) return;
+          if (state.applyingRemote) return;
           state.doc.markdown = md;
           updateStatus(status, md);
           scheduleHashSync();
@@ -1108,6 +1197,7 @@ function mountRawView(inner: HTMLElement, status: HTMLElement, dueToSize: boolea
   ta.readOnly = state.mode === 'view';
   ta.addEventListener('input', () => {
     if (state.parts) return;
+    if (state.applyingRemote) return;
     state.doc.markdown = ta.value;
     updateStatus(status, ta.value);
     scheduleHashSync();
@@ -1390,6 +1480,7 @@ function renderToolbar(): HTMLElement {
         // single row per logical doc.
         const prevDraft = state.draftMineHash;
         state.draftMineHash = gen.hash;
+        if (!state.currentDocId) state.currentDocId = crypto.randomUUID();
         recordEntry('mine', {
           hash: gen.hash,
           url: gen.url,
@@ -1397,6 +1488,7 @@ function renderToolbar(): HTMLElement {
           mode: gen.mode,
           encrypted: gen.encrypted,
           size: gen.size,
+          docId: state.currentDocId,
           mediaIds: collectDocMediaIds(gen.doc),
         }).catch((err) => console.warn('mine save failed:', err));
         if (prevDraft && prevDraft !== gen.hash) {
@@ -1415,6 +1507,7 @@ function renderToolbar(): HTMLElement {
         // We still evict the prior single-doc draft to avoid keeping a
         // stale row alongside the new set of parts.
         const prevDraft = state.draftMineHash;
+        const docId = state.currentDocId ?? crypto.randomUUID();
         const mediaIds = collectDocMediaIds(gen.doc);
         for (const p of gen.parts) {
           recordEntry('mine', {
@@ -1424,6 +1517,7 @@ function renderToolbar(): HTMLElement {
             mode: gen.mode,
             encrypted: gen.encrypted,
             size: p.url.length,
+            docId,
             mediaIds,
           }).catch((err) => console.warn('mine save failed:', err));
         }
@@ -1570,6 +1664,8 @@ async function openNewDocument() {
   // Fresh document: no prior `mine` row to track. The next edit's
   // scheduleDraftSave will create one once the URL hash is generated.
   state.draftMineHash = null;
+  // Mint a stable id so cross-device updates can recognise this as one doc.
+  state.currentDocId = crypto.randomUUID();
   state.editorFailed = false;
   state.bypassSizeLimit = false;
   render();
@@ -1687,6 +1783,7 @@ window.addEventListener('hashchange', () => {
     state.editorFailed = false;
     state.bypassSizeLimit = false;
     state.draftMineHash = null;
+    state.currentDocId = null;
     render();
     return;
   }
@@ -1695,9 +1792,10 @@ window.addEventListener('hashchange', () => {
   state.parts = null;
   state.editorFailed = false;
   state.bypassSizeLimit = false;
-  // loadFromHash will (re-)populate draftMineHash based on whether the
-  // hash exists in `mine`.
+  // loadFromHash will (re-)populate draftMineHash + currentDocId based on
+  // whether the hash exists in `mine`.
   state.draftMineHash = null;
+  state.currentDocId = null;
   loadFromHash(hash).then((ok) => {
     if (!ok) return;
     render().then(() => {
