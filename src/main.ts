@@ -64,8 +64,7 @@ import {
   bindContext,
   callHook,
   callHookAsync,
-  collectOverflowMenuItems,
-  collectToolbarButtons,
+  collectMenuSections,
   registerPlugin,
 } from './plugins/registry';
 import {
@@ -958,11 +957,20 @@ async function applyRemoteUpdate(
 // ────────────────────────────────────────────────────────────────────────
 
 async function loadPlugins(): Promise<void> {
-  // Sync plugin is opt-in at build time. With VITE_OLLU_SYNC unset, Vite
-  // tree-shakes the entire @ollu/* dependency tree out of the bundle.
+  // Each plugin is opt-in at build time. With its env flag unset, Vite
+  // still emits a chunk but the dynamic import never runs at runtime,
+  // so the plugin's dependencies stay off the user's network.
   if (import.meta.env['VITE_OLLU_SYNC'] === '1') {
     const mod = await import('./plugins/sync');
     registerPlugin(mod.syncPlugin);
+  }
+  if (import.meta.env['VITE_OLLU_BACKUP'] === '1') {
+    const mod = await import('./plugins/backup');
+    registerPlugin(mod.backupPlugin);
+  }
+  if (import.meta.env['VITE_OLLU_APPEARANCE'] === '1') {
+    const mod = await import('./plugins/appearance');
+    registerPlugin(mod.appearancePlugin);
   }
 }
 
@@ -1340,7 +1348,7 @@ function renderToolbar(): HTMLElement {
       ${state.parts && partLoaded < partTotal
         ? `<button class="btn btn--ghost toolbar__action--collapsible" data-action="parts" title="${escapeHtml(t('toolbar.btn.parts.title'))}">${escapeHtml(t('toolbar.btn.parts', { loaded: partLoaded, total: partTotal }))}</button>`
         : ''}
-      <span data-plugin-toolbar></span>
+      <span data-plugin-dropdown></span>
       <button class="btn btn--ghost toolbar__action--collapsible" data-action="new">${escapeHtml(t('toolbar.btn.new'))}</button>
       <button class="btn btn--primary" data-action="share">${escapeHtml(t('toolbar.btn.share'))}</button>
     </div>
@@ -1360,20 +1368,32 @@ function renderToolbar(): HTMLElement {
   });
   toolbar.querySelector('[data-action="parts"]')?.addEventListener('click', () => openPartsCollector());
 
-  // Replace the <span data-plugin-toolbar> marker with one button per
-  // contribution from registered plugins.
-  const pluginSlot = toolbar.querySelector('[data-plugin-toolbar]');
+  // Single dropdown button for all registered plugins' menu items. The
+  // marker is removed when no plugins contribute anything, so an empty
+  // dropdown never shows up on the toolbar.
+  const pluginSlot = toolbar.querySelector('[data-plugin-dropdown]');
   if (pluginSlot) {
-    const frag = document.createDocumentFragment();
-    for (const btn of collectToolbarButtons()) {
-      const el = document.createElement('button');
-      el.className = 'btn btn--ghost toolbar__action--collapsible';
-      el.textContent = btn.label;
-      if (btn.title) el.title = btn.title;
-      el.addEventListener('click', btn.action);
-      frag.appendChild(el);
+    const sections = collectMenuSections();
+    if (sections.length === 0) {
+      pluginSlot.remove();
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn--ghost toolbar__plugins-btn';
+      btn.setAttribute('aria-label', 'Расширения');
+      btn.setAttribute('aria-haspopup', 'menu');
+      btn.title = 'Расширения';
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="5" r="1.2"/>
+          <circle cx="12" cy="12" r="1.2"/>
+          <circle cx="12" cy="19" r="1.2"/>
+        </svg>
+      `;
+      btn.addEventListener('click', (e) => {
+        openPluginsMenu(e.currentTarget as HTMLElement);
+      });
+      pluginSlot.replaceWith(btn);
     }
-    pluginSlot.replaceWith(frag);
   }
   toolbar.querySelector('[data-action="share"]')!.addEventListener('click', () => {
     openShareDialog({
@@ -1469,9 +1489,6 @@ function openOverflowMenu(anchor: HTMLElement) {
     });
   }
 
-  for (const item of collectOverflowMenuItems()) {
-    items.push({ label: item.label, action: item.action });
-  }
   items.push({ label: t('toolbar.btn.new'), action: openNewDocument, primary: true });
 
   const menu = document.createElement('div');
@@ -1524,6 +1541,70 @@ function openOverflowMenu(anchor: HTMLElement) {
   };
 
   // Defer one tick so the click that opened the menu doesn't immediately close it.
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+  }, 0);
+}
+
+/**
+ * Dropdown for plugin contributions: anchored popover that lists items
+ * grouped per plugin (the plugin's `label` becomes a section header).
+ * Visible on all viewports — there's no separate mobile/desktop split.
+ */
+function openPluginsMenu(anchor: HTMLElement) {
+  if (document.querySelector('.overflow-menu')) return;
+  const sections = collectMenuSections();
+  if (sections.length === 0) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'overflow-menu overflow-menu--grouped';
+  menu.setAttribute('role', 'menu');
+
+  for (const section of sections) {
+    const header = document.createElement('div');
+    header.className = 'overflow-menu__section-label';
+    header.textContent = section.label;
+    menu.appendChild(header);
+    for (const item of section.items) {
+      const btn = document.createElement('button');
+      btn.className = 'overflow-menu__item';
+      btn.setAttribute('role', 'menuitem');
+      btn.textContent = item.label;
+      btn.addEventListener('click', () => {
+        close();
+        item.action();
+      });
+      menu.appendChild(btn);
+    }
+  }
+
+  const rect = anchor.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+  document.body.appendChild(menu);
+  requestAnimationFrame(() => menu.classList.add('overflow-menu--open'));
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    menu.classList.remove('overflow-menu--open');
+    setTimeout(() => menu.remove(), 160);
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', close);
+    window.removeEventListener('scroll', close, true);
+  };
+  const onDocClick = (e: MouseEvent) => {
+    const target = e.target as Node;
+    if (!menu.contains(target) && !anchor.contains(target)) close();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') close();
+  };
   setTimeout(() => {
     document.addEventListener('click', onDocClick, true);
     document.addEventListener('keydown', onKey, true);

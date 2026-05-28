@@ -295,6 +295,34 @@ body {
   background: var(--accent-soft);
 }
 
+/* Section header inside the plugins dropdown — small caps label that
+   visually separates one plugin's items from the next. */
+.overflow-menu__section-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 10px 12px 4px;
+}
+.overflow-menu__section-label:first-child {
+  padding-top: 6px;
+}
+
+/* Toolbar button that opens the plugins dropdown — always visible
+   (no responsive collapse), just an icon with a hover background. */
+.toolbar__plugins-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+}
+.toolbar__plugins-btn svg {
+  display: block;
+}
+
 /* ───────────────────────────────────────────────────────────
    Buttons
    ─────────────────────────────────────────────────────────── */

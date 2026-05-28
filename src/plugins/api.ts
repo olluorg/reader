@@ -40,12 +40,6 @@ export interface SplitShareGenerated {
   readonly doc: DocumentPayload;
 }
 
-export interface ToolbarButton {
-  readonly label: string;
-  readonly action: () => void;
-  readonly title?: string;
-}
-
 export interface MenuItem {
   readonly label: string;
   readonly action: () => void;
@@ -95,6 +89,8 @@ export interface ReaderPluginContext {
 
 export interface ReaderPlugin {
   readonly id: string;
+  /** Human-readable plugin label for the dropdown section header. */
+  readonly label?: string;
 
   // Lifecycle
   onAppStart?(ctx: ReaderPluginContext): Promise<void> | void;
@@ -114,7 +110,16 @@ export interface ReaderPlugin {
     gen: SplitShareGenerated,
   ): void;
 
-  // UI contributions
-  toolbarButtons?(ctx: ReaderPluginContext): readonly ToolbarButton[];
-  overflowMenuItems?(ctx: ReaderPluginContext): readonly MenuItem[];
+  /**
+   * Items to show inside the plugins dropdown in the toolbar. The dropdown
+   * groups items by plugin (label header). Mobile and desktop share this
+   * dropdown — there's no separate toolbarButtons / overflowMenuItems.
+   */
+  menuItems?(ctx: ReaderPluginContext): readonly MenuItem[];
+}
+
+export interface PluginMenuSection {
+  readonly id: string;
+  readonly label: string;
+  readonly items: readonly MenuItem[];
 }

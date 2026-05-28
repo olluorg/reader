@@ -1,8 +1,7 @@
 import type {
-  MenuItem,
+  PluginMenuSection,
   ReaderPlugin,
   ReaderPluginContext,
-  ToolbarButton,
 } from './api';
 
 const registered: ReaderPlugin[] = [];
@@ -20,7 +19,6 @@ export function bindContext(c: ReaderPluginContext): void {
   ctx = c;
 }
 
-/** Synchronous hook fan-out. Errors in one plugin don't block the rest. */
 export function callHook(
   name: Extract<
     keyof ReaderPlugin,
@@ -48,7 +46,6 @@ export function callHook(
   }
 }
 
-/** Async hook fan-out (awaited sequentially). */
 export async function callHookAsync(
   name: Extract<keyof ReaderPlugin, 'onAppStart' | 'onDocLoaded'>,
   ...args: unknown[]
@@ -68,30 +65,25 @@ export async function callHookAsync(
   }
 }
 
-export function collectToolbarButtons(): readonly ToolbarButton[] {
+/**
+ * Items contributed by each registered plugin, grouped per plugin so the
+ * dropdown can render sections with the plugin's label as a header.
+ * Plugins with no items are omitted.
+ */
+export function collectMenuSections(): readonly PluginMenuSection[] {
   if (!ctx) return [];
-  const out: ToolbarButton[] = [];
+  const out: PluginMenuSection[] = [];
   for (const p of registered) {
-    if (!p.toolbarButtons) continue;
+    if (!p.menuItems) continue;
+    let items: readonly { label: string; action: () => void }[] = [];
     try {
-      out.push(...p.toolbarButtons(ctx));
+      items = p.menuItems(ctx);
     } catch (err) {
-      console.warn(`[plugins] ${p.id}.toolbarButtons failed:`, err);
+      console.warn(`[plugins] ${p.id}.menuItems failed:`, err);
+      continue;
     }
-  }
-  return out;
-}
-
-export function collectOverflowMenuItems(): readonly MenuItem[] {
-  if (!ctx) return [];
-  const out: MenuItem[] = [];
-  for (const p of registered) {
-    if (!p.overflowMenuItems) continue;
-    try {
-      out.push(...p.overflowMenuItems(ctx));
-    } catch (err) {
-      console.warn(`[plugins] ${p.id}.overflowMenuItems failed:`, err);
-    }
+    if (items.length === 0) continue;
+    out.push({ id: p.id, label: p.label ?? p.id, items });
   }
   return out;
 }

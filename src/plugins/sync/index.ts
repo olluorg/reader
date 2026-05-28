@@ -6,7 +6,6 @@ import {
 } from '../../storage/library';
 import { setPosition } from '../../storage/positions';
 import type { ReaderPlugin, ReaderPluginContext } from '../api';
-import { openBackupDialog } from './backup-dialog';
 import {
   getCurrentDocId,
   getDraftMineHash,
@@ -20,6 +19,8 @@ import {
 } from './draft';
 import { initSdk } from './setup';
 import { openSettingsDialog } from './settings-dialog';
+// Backup is its own plugin now (src/plugins/backup/); the dialog is no
+// longer part of sync.
 
 let pluginCtx: ReaderPluginContext | null = null;
 
@@ -38,6 +39,7 @@ function onOlluIncoming(event: Event): void {
 
 export const syncPlugin: ReaderPlugin = {
   id: 'sync',
+  label: 'Синхронизация',
 
   async onAppStart(ctx) {
     pluginCtx = ctx;
@@ -114,18 +116,8 @@ export const syncPlugin: ReaderPlugin = {
     setDraftMineHash(null);
   },
 
-  toolbarButtons() {
-    return [
-      { label: 'Sync', action: openSettingsDialog, title: 'Синхронизация' },
-      { label: 'Backup', action: openBackupDialog, title: 'Бэкап / восстановление' },
-    ];
-  },
-
-  overflowMenuItems() {
-    return [
-      { label: 'Синхронизация…', action: openSettingsDialog },
-      { label: 'Бэкап…', action: openBackupDialog },
-    ];
+  menuItems() {
+    return [{ label: 'Настройки синхронизации…', action: openSettingsDialog }];
   },
 };
 
