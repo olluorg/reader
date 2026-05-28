@@ -9,6 +9,28 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="color-scheme" content="light dark" />
     <title>Reader — Markdown</title>
+    <script>
+      // Set the effective theme on <html data-theme="..."> BEFORE the
+      // stylesheet evaluates so the first paint already matches. Uses
+      // the appearance plugin's localStorage key if present; otherwise
+      // falls back to the OS preference.
+      (function () {
+        var theme = 'auto';
+        try {
+          var raw = localStorage.getItem('reader.appearance');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && (parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'auto')) {
+              theme = parsed.theme;
+            }
+          }
+        } catch (e) {}
+        if (theme === 'auto') {
+          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

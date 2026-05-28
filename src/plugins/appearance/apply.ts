@@ -1,14 +1,14 @@
 /**
  * Live application of appearance settings to the document.
  *
- * Theme handling rides on the existing `prefers-color-scheme` CSS in
- * reader's main.css — we override `color-scheme` on `:root` so that
- * "light" or "dark" force the corresponding rule branches and "auto"
- * defers to the OS preference.
+ * Theme handling drives the `data-theme` attribute on <html>; the
+ * stylesheet (src/styles/main.css) flips palettes based on its value.
+ * For "auto" we resolve the OS preference and listen for changes so a
+ * later system flip is picked up live.
  *
- * Fonts override the `--font-sans` and `--font-serif` CSS variables
- * via an injected `<style>` element so we don't mutate elements that
- * the editor or other plugins might also touch.
+ * Fonts override `--font-sans` and `--font-serif` via an injected
+ * `<style>` element so we don't mutate elements that the editor or
+ * other plugins might also touch.
  */
 
 const STYLE_ID = 'reader-appearance-overrides';
@@ -48,11 +48,43 @@ export const SERIF_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
   { label: 'Системный serif', value: 'ui-serif, Georgia, "Times New Roman", serif' },
 ];
 
+let osMediaQuery: MediaQueryList | null = null;
+let osListener: ((e: MediaQueryListEvent) => void) | null = null;
+let currentConfig: AppearanceConfig = { ...DEFAULTS };
+
+function effectiveTheme(theme: Theme): 'light' | 'dark' {
+  if (theme === 'auto') {
+    if (typeof matchMedia === 'undefined') return 'light';
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return theme;
+}
+
+function writeDataTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+function attachOsListener(): void {
+  if (typeof matchMedia === 'undefined') return;
+  if (osMediaQuery && osListener) {
+    osMediaQuery.removeEventListener('change', osListener);
+  }
+  osMediaQuery = matchMedia('(prefers-color-scheme: dark)');
+  osListener = () => {
+    if (currentConfig.theme === 'auto') {
+      writeDataTheme(effectiveTheme('auto'));
+    }
+  };
+  osMediaQuery.addEventListener('change', osListener);
+}
+
 export function applyAppearance(config: AppearanceConfig): void {
   if (typeof document === 'undefined') return;
-  // Theme: drive the existing `@media (prefers-color-scheme: dark)` rules.
-  document.documentElement.style.colorScheme =
-    config.theme === 'auto' ? '' : config.theme;
+  currentConfig = { ...config };
+  writeDataTheme(effectiveTheme(config.theme));
+  if (config.theme === 'auto') {
+    attachOsListener();
+  }
 
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {

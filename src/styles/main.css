@@ -76,33 +76,36 @@
   --crepe-font-code: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14120f;
-    --bg-elevated: #1c1a16;
-    --bg-subtle: #25221c;
-    --bg-sunken: #110f0c;
+/* Dark palette is driven by `data-theme="dark"` on <html>. The attribute
+   is set very early in <head> from the OS preference (or the appearance
+   plugin's localStorage), so the first paint matches without a flash.
+   The appearance plugin can flip the attribute live to override the OS
+   pref. */
+:root[data-theme="dark"] {
+  --bg: #14120f;
+  --bg-elevated: #1c1a16;
+  --bg-subtle: #25221c;
+  --bg-sunken: #110f0c;
 
-    --text: #ebe6da;
-    --text-muted: #948e80;
-    --text-faint: #565249;
+  --text: #ebe6da;
+  --text-muted: #948e80;
+  --text-faint: #565249;
 
-    --border: #2e2a23;
-    --border-strong: #443f35;
+  --border: #2e2a23;
+  --border-strong: #443f35;
 
-    --accent: #d68660;
-    --accent-soft: rgba(214, 134, 96, 0.16);
-    --accent-strong: #e89c7c;
-    --accent-fg: #1a1813;
+  --accent: #d68660;
+  --accent-soft: rgba(214, 134, 96, 0.16);
+  --accent-strong: #e89c7c;
+  --accent-fg: #1a1813;
 
-    --highlight: rgba(247, 196, 89, 0.22);
-    --error: #e57878;
+  --highlight: rgba(247, 196, 89, 0.22);
+  --error: #e57878;
 
-    --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.25);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
-    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* ───────────────────────────────────────────────────────────
@@ -213,10 +216,8 @@ body {
 .toolbar__brand-mode--comment {
   color: #b8860b;
 }
-@media (prefers-color-scheme: dark) {
-  .toolbar__brand-mode--comment {
-    color: #d4a64d;
-  }
+:root[data-theme="dark"] .toolbar__brand-mode--comment {
+  color: #d4a64d;
 }
 
 .toolbar__actions {
@@ -377,6 +378,15 @@ body {
 .btn--ghost:hover {
   color: var(--text);
   background: var(--bg-subtle);
+}
+
+/* "Active" state for toggle-style buttons (e.g. theme picker chips in
+   the appearance dialog). Visually distinct from a plain hover. */
+.btn--active,
+.btn--active:hover {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .btn--outline {
@@ -849,12 +859,10 @@ milkdown-link-preview {
   color: #8a6500;
   border-color: rgba(184, 134, 11, 0.3);
 }
-@media (prefers-color-scheme: dark) {
-  .library__badge--comment {
-    color: #d4a64d;
-    background: rgba(212, 166, 77, 0.12);
-    border-color: rgba(212, 166, 77, 0.3);
-  }
+:root[data-theme="dark"] .library__badge--comment {
+  color: #d4a64d;
+  background: rgba(212, 166, 77, 0.12);
+  border-color: rgba(212, 166, 77, 0.3);
 }
 .library__badge--lock {
   letter-spacing: 0;
