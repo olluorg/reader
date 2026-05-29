@@ -4,6 +4,23 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      sync:
+        description: Sync plugin
+        type: boolean
+        default: true
+      backup:
+        description: Backup plugin
+        type: boolean
+        default: true
+      appearance:
+        description: Appearance plugin
+        type: boolean
+        default: true
+      lang:
+        description: Language plugin
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -23,19 +40,49 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+
+      # Manual runs (workflow_dispatch) use the boolean inputs above —
+      # untick a plugin in the "Run workflow" dialog and it goes off.
+      # Push runs use vars.* from GitHub → Settings → Secrets and
+      # variables → Actions → Variables (a missing variable means the
+      # plugin is off).
+      - name: Resolve plugin flags
+        id: flags
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_SYNC: ${{ inputs.sync }}
+          IN_BACKUP: ${{ inputs.backup }}
+          IN_APPEARANCE: ${{ inputs.appearance }}
+          IN_LANG: ${{ inputs.lang }}
+          VAR_SYNC: ${{ vars.VITE_OLLU_SYNC }}
+          VAR_BACKUP: ${{ vars.VITE_OLLU_BACKUP }}
+          VAR_APPEARANCE: ${{ vars.VITE_OLLU_APPEARANCE }}
+          VAR_LANG: ${{ vars.VITE_OLLU_LANG }}
+        run: |
+          resolve() {
+            local name=$1 input=$2 fallback=$3
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              [ "$input" = "true" ] && echo "$name=1" || echo "$name="
+            else
+              echo "$name=$fallback"
+            fi
+          }
+          {
+            resolve VITE_OLLU_SYNC "$IN_SYNC" "$VAR_SYNC"
+            resolve VITE_OLLU_BACKUP "$IN_BACKUP" "$VAR_BACKUP"
+            resolve VITE_OLLU_APPEARANCE "$IN_APPEARANCE" "$VAR_APPEARANCE"
+            resolve VITE_OLLU_LANG "$IN_LANG" "$VAR_LANG"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build
         env:
-          # Plugin opt-in flags + plugin configuration. Set these in
-          # GitHub → Settings → Secrets and variables → Actions →
-          # Variables (NOT Secrets — Vite inlines them into the JS
-          # bundle, so they're not actually secret).
-          # An unset variable expands to "" and the plugin's
-          # `import.meta.env.XXX === '1'` check fails, so the plugin
-          # stays off without touching the workflow file.
-          VITE_OLLU_SYNC: ${{ vars.VITE_OLLU_SYNC }}
-          VITE_OLLU_BACKUP: ${{ vars.VITE_OLLU_BACKUP }}
-          VITE_OLLU_APPEARANCE: ${{ vars.VITE_OLLU_APPEARANCE }}
-          VITE_OLLU_LANG: ${{ vars.VITE_OLLU_LANG }}
+          VITE_OLLU_SYNC: ${{ steps.flags.outputs.VITE_OLLU_SYNC }}
+          VITE_OLLU_BACKUP: ${{ steps.flags.outputs.VITE_OLLU_BACKUP }}
+          VITE_OLLU_APPEARANCE: ${{ steps.flags.outputs.VITE_OLLU_APPEARANCE }}
+          VITE_OLLU_LANG: ${{ steps.flags.outputs.VITE_OLLU_LANG }}
+          # Server URL and Google client ID always come from Variables —
+          # they're shared config, not per-run toggles.
           VITE_OLLU_SERVER: ${{ vars.VITE_OLLU_SERVER }}
           VITE_OLLU_GOOGLE_CLIENT_ID: ${{ vars.VITE_OLLU_GOOGLE_CLIENT_ID }}
         run: bun run build
