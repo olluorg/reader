@@ -7,6 +7,8 @@ import {
 } from '@milkdown/kit/core';
 import { clearTextInCurrentBlockCommand } from '@milkdown/kit/preset/commonmark';
 import { replaceAll, insert } from '@milkdown/kit/utils';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
+import type { EditorView } from '@milkdown/kit/prose/view';
 import type { Mode } from '../types';
 import { t } from '../i18n';
 
@@ -31,6 +33,13 @@ export interface EditorHandle {
    * library doesn't recognise, so `![](reader-media:abc)` parses to nothing.
    */
   insertImageNode: (attrs: { src: string; alt?: string; title?: string }) => Promise<void>;
+  /**
+   * The live ProseMirror view, or null before it's ready / after destroy.
+   * Exposed so plugins that contribute editor-level behaviour (e.g. the
+   * predict plugin's ghost-text) can dispatch transactions from outside the
+   * editor's own plugins when needed.
+   */
+  getView: () => EditorView | null;
   destroy: () => Promise<void>;
 }
 
@@ -55,10 +64,18 @@ export async function createEditor(opts: {
   onImageRequest?: () => void;
   /** Reserved for future opt-out of GFM nodes; currently ignored under Crepe. */
   disableGfm?: boolean;
+  /**
+   * Native Milkdown/ProseMirror plugins contributed by reader plugins (via
+   * `ReaderPlugin.editorPlugins`). Registered on the underlying editor before
+   * `create()` so they participate in the initial editor state — used by the
+   * predict plugin to add its ghost-text decoration + keymap.
+   */
+  editorPlugins?: readonly MilkdownPlugin[];
 }): Promise<EditorHandle> {
   void opts.disableGfm;
 
   let currentMarkdown = opts.initialMarkdown;
+  let view: EditorView | null = null;
   const readonly = opts.mode === 'view';
 
   let crepe: Crepe;
@@ -138,8 +155,20 @@ export async function createEditor(opts: {
       });
     });
 
+    // Reader-plugin-contributed editor plugins (ghost-text, etc.) must be
+    // registered before create() so they're part of the initial editor state.
+    if (opts.editorPlugins?.length) {
+      crepe.editor.use(opts.editorPlugins as MilkdownPlugin[]);
+    }
+
     await crepe.create();
     if (readonly) crepe.setReadonly(true);
+
+    // Capture the live ProseMirror view for getView(). The action runs on the
+    // already-created editor, so editorViewCtx is populated.
+    await crepe.editor.action((ctx) => {
+      view = ctx.get(editorViewCtx);
+    });
   } catch (err) {
     opts.root.innerHTML = '';
     throw new EditorBootError(err);
@@ -166,7 +195,9 @@ export async function createEditor(opts: {
         view.dispatch(view.state.tr.replaceSelectionWith(node, false).scrollIntoView());
       });
     },
+    getView: () => view,
     destroy: async () => {
+      view = null;
       await crepe.destroy();
     },
   };

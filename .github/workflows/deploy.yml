@@ -21,6 +21,14 @@ on:
         description: Language plugin
         type: boolean
         default: true
+      predict:
+        description: Predict plugin (offline autocomplete)
+        type: boolean
+        default: true
+      voice:
+        description: Voice plugin (on-device dictation)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -55,10 +63,14 @@ jobs:
           IN_BACKUP: ${{ inputs.backup }}
           IN_APPEARANCE: ${{ inputs.appearance }}
           IN_LANG: ${{ inputs.lang }}
+          IN_PREDICT: ${{ inputs.predict }}
+          IN_VOICE: ${{ inputs.voice }}
           VAR_SYNC: ${{ vars.VITE_OLLU_SYNC }}
           VAR_BACKUP: ${{ vars.VITE_OLLU_BACKUP }}
           VAR_APPEARANCE: ${{ vars.VITE_OLLU_APPEARANCE }}
           VAR_LANG: ${{ vars.VITE_OLLU_LANG }}
+          VAR_PREDICT: ${{ vars.VITE_OLLU_PREDICT }}
+          VAR_VOICE: ${{ vars.VITE_OLLU_VOICE }}
         run: |
           resolve() {
             local name=$1 input=$2 fallback=$3
@@ -73,6 +85,8 @@ jobs:
             resolve VITE_OLLU_BACKUP "$IN_BACKUP" "$VAR_BACKUP"
             resolve VITE_OLLU_APPEARANCE "$IN_APPEARANCE" "$VAR_APPEARANCE"
             resolve VITE_OLLU_LANG "$IN_LANG" "$VAR_LANG"
+            resolve VITE_OLLU_PREDICT "$IN_PREDICT" "$VAR_PREDICT"
+            resolve VITE_OLLU_VOICE "$IN_VOICE" "$VAR_VOICE"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build
@@ -81,6 +95,8 @@ jobs:
           VITE_OLLU_BACKUP: ${{ steps.flags.outputs.VITE_OLLU_BACKUP }}
           VITE_OLLU_APPEARANCE: ${{ steps.flags.outputs.VITE_OLLU_APPEARANCE }}
           VITE_OLLU_LANG: ${{ steps.flags.outputs.VITE_OLLU_LANG }}
+          VITE_OLLU_PREDICT: ${{ steps.flags.outputs.VITE_OLLU_PREDICT }}
+          VITE_OLLU_VOICE: ${{ steps.flags.outputs.VITE_OLLU_VOICE }}
           # Server URL and Google client ID always come from Variables —
           # they're shared config, not per-run toggles.
           VITE_OLLU_SERVER: ${{ vars.VITE_OLLU_SERVER }}

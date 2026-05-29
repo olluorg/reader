@@ -613,6 +613,138 @@ body {
   min-height: 60vh;
 }
 
+/* Inline autocomplete ghost-text (predict plugin). A non-editable widget
+   decoration that trails the caret; Tab or a click on it accepts. Inherits
+   the editor's type metrics so it sits flush with what you're typing. */
+.predict-ghost {
+  cursor: pointer;
+  white-space: pre;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Tier 0 (n-gram word completion) — neutral, recedes into the page. */
+.predict-ghost--tier0 {
+  color: var(--text-muted);
+  opacity: 0.62;
+}
+/* Tier 1 (on-device LM phrase) — accent tint so the smarter source reads
+   as distinct from plain word completion. */
+.predict-ghost--tier1 {
+  color: var(--accent, #4a7);
+  opacity: 0.78;
+}
+
+/* Predict settings dialog: toggle row, model status, download progress. */
+.predict-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.predict-status {
+  font-size: 14px;
+  color: var(--text);
+  margin: 6px 0;
+}
+.predict-status--muted {
+  color: var(--text-muted);
+}
+.predict-status--ok {
+  color: var(--accent, #2e7d32);
+}
+.predict-status--err {
+  color: #c0392b;
+}
+.predict-warn {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.predict-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  overflow: hidden;
+  margin: 8px 0;
+}
+.predict-progress__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent, #4a7);
+  transition: width 0.2s ease;
+}
+
+/* Voice plugin: live dictation preview at the caret — a pulsing mic marker
+   plus the not-yet-committed interim transcript — and the "listening /
+   transcribing" status pill. The preview mirrors predict's ghost. */
+.voice-cursor {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: pre-wrap;
+}
+.voice-cursor__mic {
+  font-size: 0.85em;
+  margin: 0 0.15em 0 0.05em;
+  animation: voice-pulse 1.1s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.voice-preview {
+  color: var(--accent, #4a7);
+  opacity: 0.7;
+}
+
+/* Bindings editor: one row per key→language trigger. */
+.voice-binding {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.voice-binding__key {
+  min-width: 84px;
+}
+.voice-overlay {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 85%, transparent);
+  color: var(--bg, #fff);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.voice-overlay__spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--bg, #fff) 35%, transparent);
+  border-top-color: var(--bg, #fff);
+  animation: voice-spin 0.7s linear infinite;
+}
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Crepe's reset.css styles content via `.milkdown .ProseMirror <tag>`
    selectors (specificity 0,2,1). All our content rules below match that
    specificity so load order decides — and main.css loads after Crepe. */

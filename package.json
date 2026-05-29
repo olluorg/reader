@@ -15,6 +15,7 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
     "@fontsource-variable/source-serif-4": "^5.1.0",
+    "@huggingface/transformers": "^4.2.0",
     "@milkdown/crepe": "^7.5.0",
     "@milkdown/kit": "^7.5.0",
     "@ollu/sdk-core": "https://github.com/olluorg/micro-platform/releases/download/v0.2.1/ollu-sdk-core-0.2.1.tgz",

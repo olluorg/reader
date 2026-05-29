@@ -1,3 +1,4 @@
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 import type { EditorHandle } from '../editor/milkdown';
 import type { DocumentPayload, DocumentVersion, Mode, PartHeader } from '../types';
 
@@ -116,6 +117,15 @@ export interface ReaderPlugin {
    * dropdown — there's no separate toolbarButtons / overflowMenuItems.
    */
   menuItems?(ctx: ReaderPluginContext): readonly MenuItem[];
+
+  /**
+   * Native Milkdown/ProseMirror plugins to install on the WYSIWYG editor.
+   * Collected by the core when it builds the editor (every render), so they
+   * survive editor re-creation. Use this to add decorations, keymaps, or
+   * view behaviour — the predict plugin adds inline ghost-text completion
+   * this way. Not invoked for the raw-textarea fallback view.
+   */
+  editorPlugins?(ctx: ReaderPluginContext): readonly MilkdownPlugin[];
 }
 
 export interface PluginMenuSection {

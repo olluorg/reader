@@ -1,3 +1,4 @@
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 import type {
   PluginMenuSection,
   ReaderPlugin,
@@ -63,6 +64,25 @@ export async function callHookAsync(
       console.warn(`[plugins] ${plugin.id}.${name} failed:`, err);
     }
   }
+}
+
+/**
+ * Native editor plugins contributed by every registered plugin, flattened.
+ * Collected by the core each time it builds the WYSIWYG editor so plugin
+ * editor behaviour (ghost-text, etc.) is reinstalled after re-creation.
+ */
+export function collectEditorPlugins(): MilkdownPlugin[] {
+  if (!ctx) return [];
+  const out: MilkdownPlugin[] = [];
+  for (const p of registered) {
+    if (!p.editorPlugins) continue;
+    try {
+      out.push(...p.editorPlugins(ctx));
+    } catch (err) {
+      console.warn(`[plugins] ${p.id}.editorPlugins failed:`, err);
+    }
+  }
+  return out;
 }
 
 /**

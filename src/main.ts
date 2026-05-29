@@ -64,6 +64,7 @@ import {
   bindContext,
   callHook,
   callHookAsync,
+  collectEditorPlugins,
   collectMenuSections,
   registerPlugin,
 } from './plugins/registry';
@@ -985,6 +986,14 @@ async function loadPlugins(): Promise<void> {
     const mod = await import('./plugins/language');
     registerPlugin(mod.languagePlugin);
   }
+  if (import.meta.env['VITE_OLLU_PREDICT'] === '1') {
+    const mod = await import('./plugins/predict');
+    registerPlugin(mod.predictPlugin);
+  }
+  if (import.meta.env['VITE_OLLU_VOICE'] === '1') {
+    const mod = await import('./plugins/voice');
+    registerPlugin(mod.voicePlugin);
+  }
 }
 
 function buildPluginContext(): ReaderPluginContext {
@@ -1051,6 +1060,7 @@ async function render() {
         // For oversized docs the user opted into, disable GFM tables — that's
         // the plugin most likely to throw on malformed or huge input.
         disableGfm: state.bypassSizeLimit,
+        editorPlugins: collectEditorPlugins(),
         onChange: (md) => {
           if (state.parts) return;
           if (suppressRemoteEcho) return;
