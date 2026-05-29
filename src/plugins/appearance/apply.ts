@@ -101,8 +101,16 @@ export function applyAppearance(config: AppearanceConfig): void {
     style.id = STYLE_ID;
     document.head.appendChild(style);
   }
+  // Crepe's reset.css pins `.milkdown .ProseMirror p { font-size: 16px }`,
+  // which breaks inheritance from `.milkdown` — so paragraphs ignore the
+  // user's chosen size unless we force them back to inherit. Headings in
+  // reader's main.css already use em (they scale from `.milkdown`'s
+  // computed size), so we don't need to touch them.
   style.textContent = `.milkdown {
   font-family: ${config.fontBody};
   font-size: ${config.fontSize}px;
+}
+.milkdown .ProseMirror p {
+  font-size: inherit;
 }`;
 }
