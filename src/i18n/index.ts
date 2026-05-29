@@ -3,13 +3,34 @@ import { ru } from './ru';
 
 export type Lang = 'en' | 'ru';
 
+/** Languages the UI ships translations for. */
+export const AVAILABLE_LANGS: readonly Lang[] = ['en', 'ru'];
+
+/**
+ * localStorage key holding a manual language override ('en' | 'ru').
+ * Absent → follow the system. Written only by the optional language
+ * plugin; the core just honours it if present.
+ */
+export const LANG_STORAGE_KEY = 'reader.lang';
+
 type Dict = typeof en;
 type DictKey = keyof Dict;
 
 type PluralForms = { one: string; few?: string; many?: string; other: string };
 type Value = string | PluralForms;
 
-function detectLang(): Lang {
+function readOverride(): Lang | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(LANG_STORAGE_KEY);
+    if (v === 'en' || v === 'ru') return v;
+  } catch {
+    // ignore storage errors (private mode, disabled storage, …)
+  }
+  return null;
+}
+
+function detectSystemLang(): Lang {
   const candidates: string[] = [];
   if (typeof navigator !== 'undefined') {
     if (Array.isArray(navigator.languages)) candidates.push(...navigator.languages);
@@ -21,6 +42,10 @@ function detectLang(): Lang {
     if (primary === 'en') return 'en';
   }
   return 'en';
+}
+
+function detectLang(): Lang {
+  return readOverride() ?? detectSystemLang();
 }
 
 export const lang: Lang = detectLang();

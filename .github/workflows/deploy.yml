@@ -23,7 +23,22 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bun run build
+      - name: Build
+        env:
+          # Plugin opt-in flags + plugin configuration. Set these in
+          # GitHub → Settings → Secrets and variables → Actions →
+          # Variables (NOT Secrets — Vite inlines them into the JS
+          # bundle, so they're not actually secret).
+          # An unset variable expands to "" and the plugin's
+          # `import.meta.env.XXX === '1'` check fails, so the plugin
+          # stays off without touching the workflow file.
+          VITE_OLLU_SYNC: ${{ vars.VITE_OLLU_SYNC }}
+          VITE_OLLU_BACKUP: ${{ vars.VITE_OLLU_BACKUP }}
+          VITE_OLLU_APPEARANCE: ${{ vars.VITE_OLLU_APPEARANCE }}
+          VITE_OLLU_LANG: ${{ vars.VITE_OLLU_LANG }}
+          VITE_OLLU_SERVER: ${{ vars.VITE_OLLU_SERVER }}
+          VITE_OLLU_GOOGLE_CLIENT_ID: ${{ vars.VITE_OLLU_GOOGLE_CLIENT_ID }}
+        run: bun run build
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:

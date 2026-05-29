@@ -972,6 +972,10 @@ async function loadPlugins(): Promise<void> {
     const mod = await import('./plugins/appearance');
     registerPlugin(mod.appearancePlugin);
   }
+  if (import.meta.env['VITE_OLLU_LANG'] === '1') {
+    const mod = await import('./plugins/language');
+    registerPlugin(mod.languagePlugin);
+  }
 }
 
 function buildPluginContext(): ReaderPluginContext {
