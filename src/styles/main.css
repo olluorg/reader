@@ -109,6 +109,139 @@
 }
 
 /* ───────────────────────────────────────────────────────────
+   Colour palettes — `data-palette` on <html> switches schemes.
+   "warm" is the default (no override needed); the rest tint
+   both backgrounds and accents while keeping the same surface
+   structure. Each palette carries a light + dark variant. The
+   appearance plugin writes the attribute; the early-init script
+   in index.html restores it before first paint.
+   ─────────────────────────────────────────────────────────── */
+
+:root[data-palette="cool"] {
+  --bg: #f4f6f9;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #e9edf3;
+  --bg-sunken: #e3e7ee;
+  --text: #131722;
+  --text-muted: #5d6679;
+  --text-faint: #a1a8b5;
+  --border: #dde3ed;
+  --border-strong: #c6cedc;
+  --accent: #2563a7;
+  --accent-soft: rgba(37, 99, 167, 0.1);
+  --accent-strong: #1c4a82;
+  --accent-fg: #ffffff;
+}
+:root[data-palette="cool"][data-theme="dark"] {
+  --bg: #0f1218;
+  --bg-elevated: #171b24;
+  --bg-subtle: #1f2531;
+  --bg-sunken: #0b0e13;
+  --text: #e2e7f0;
+  --text-muted: #8a93a4;
+  --text-faint: #515a6a;
+  --border: #262c39;
+  --border-strong: #3c4453;
+  --accent: #5b9be8;
+  --accent-soft: rgba(91, 155, 232, 0.16);
+  --accent-strong: #7eb3ee;
+  --accent-fg: #0f1218;
+}
+
+:root[data-palette="forest"] {
+  --bg: #f6f5ed;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #ebe9da;
+  --bg-sunken: #e8e5d2;
+  --text: #1a1d15;
+  --text-muted: #5e6353;
+  --text-faint: #a8ac9b;
+  --border: #dfdcc7;
+  --border-strong: #c5c3a8;
+  --accent: #436a3a;
+  --accent-soft: rgba(67, 106, 58, 0.1);
+  --accent-strong: #2f4f29;
+  --accent-fg: #ffffff;
+}
+:root[data-palette="forest"][data-theme="dark"] {
+  --bg: #11140f;
+  --bg-elevated: #181c14;
+  --bg-subtle: #20251c;
+  --bg-sunken: #0e110c;
+  --text: #e6e9dc;
+  --text-muted: #939680;
+  --text-faint: #545748;
+  --border: #292e24;
+  --border-strong: #404635;
+  --accent: #82b276;
+  --accent-soft: rgba(130, 178, 118, 0.16);
+  --accent-strong: #9bc890;
+  --accent-fg: #11140f;
+}
+
+:root[data-palette="plum"] {
+  --bg: #f8f5f7;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #efe9ed;
+  --bg-sunken: #ece5ea;
+  --text: #1c1418;
+  --text-muted: #67606a;
+  --text-faint: #aaa3ad;
+  --border: #e1d8df;
+  --border-strong: #ccc1ca;
+  --accent: #8b4179;
+  --accent-soft: rgba(139, 65, 121, 0.1);
+  --accent-strong: #6d2e5e;
+  --accent-fg: #ffffff;
+}
+:root[data-palette="plum"][data-theme="dark"] {
+  --bg: #14101a;
+  --bg-elevated: #1b1722;
+  --bg-subtle: #25202d;
+  --bg-sunken: #100c17;
+  --text: #e8e2ec;
+  --text-muted: #968d9b;
+  --text-faint: #564f5b;
+  --border: #2d2733;
+  --border-strong: #443d4a;
+  --accent: #c282b1;
+  --accent-soft: rgba(194, 130, 177, 0.16);
+  --accent-strong: #d49bc4;
+  --accent-fg: #14101a;
+}
+
+:root[data-palette="mono"] {
+  --bg: #f7f7f7;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #ededed;
+  --bg-sunken: #e8e8e8;
+  --text: #161616;
+  --text-muted: #5e5e5e;
+  --text-faint: #a8a8a8;
+  --border: #dedede;
+  --border-strong: #c4c4c4;
+  --accent: #1f1f1f;
+  --accent-soft: rgba(31, 31, 31, 0.08);
+  --accent-strong: #000000;
+  --accent-fg: #ffffff;
+}
+:root[data-palette="mono"][data-theme="dark"] {
+  --bg: #121212;
+  --bg-elevated: #1c1c1c;
+  --bg-subtle: #252525;
+  --bg-sunken: #0d0d0d;
+  --text: #eaeaea;
+  --text-muted: #9a9a9a;
+  --text-faint: #555555;
+  --border: #2d2d2d;
+  --border-strong: #444444;
+  --accent: #e6e6e6;
+  --accent-soft: rgba(230, 230, 230, 0.12);
+  --accent-strong: #ffffff;
+  --accent-fg: #121212;
+}
+
+/* ───────────────────────────────────────────────────────────
    Reset & base
    ─────────────────────────────────────────────────────────── */
 
@@ -1546,6 +1679,66 @@ milkdown-link-preview {
   font-size: 12.5px;
   color: var(--text-muted);
   line-height: 1.45;
+}
+
+/* ───────────────────────────────────────────────────────────
+   Palette picker (appearance dialog)
+   ─────────────────────────────────────────────────────────── */
+
+.palette-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.palette-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+
+.palette-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.palette-chip--active,
+.palette-chip--active:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.palette-chip__swatch {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  flex-shrink: 0;
+}
+
+.palette-chip__half {
+  flex: 1;
+  display: block;
+}
+
+.palette-chip__label {
+  white-space: nowrap;
 }
 
 /* ───────────────────────────────────────────────────────────

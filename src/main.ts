@@ -418,19 +418,22 @@ async function importImageFile(
   file: File,
 ): Promise<{ ok: true; ref: MediaRef } | { ok: false; error: string }> {
   if (!/^image\//.test(file.type)) {
-    return { ok: false, error: 'Это не похоже на изображение.' };
+    return { ok: false, error: t('image.err.notImage') };
   }
   if (file.size > MAX_IMAGE_BYTES) {
     return {
       ok: false,
-      error: `Файл слишком большой (${(file.size / 1024 / 1024).toFixed(1)} MB). Максимум — ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`,
+      error: t('image.err.tooLarge', {
+        mb: (file.size / 1024 / 1024).toFixed(1),
+        maxMb: MAX_IMAGE_BYTES / 1024 / 1024,
+      }),
     };
   }
   let rawBytes: Uint8Array;
   try {
     rawBytes = new Uint8Array(await file.arrayBuffer());
   } catch (err) {
-    return { ok: false, error: `Не удалось прочитать файл: ${(err as Error).message}` };
+    return { ok: false, error: t('image.err.read', { message: (err as Error).message }) };
   }
 
   // Downscale + WebP re-encode. SVG passes through unchanged; failure to
@@ -463,14 +466,18 @@ async function importImageFile(
       error:
         err instanceof ImageDecodeError
           ? err.message
-          : `Не удалось декодировать изображение: ${(err as Error).message}`,
+          : t('image.err.decode', { message: (err as Error).message }),
     };
   }
 
   if (processed.changed) {
     const saved = Math.round((1 - bytes.length / processed.originalSize) * 100);
     showToast(
-      `Изображение оптимизировано: ${kb(processed.originalSize)} → ${kb(bytes.length)} KB (-${saved}%)`,
+      t('image.optimized', {
+        from: kb(processed.originalSize),
+        to: kb(bytes.length),
+        saved,
+      }),
       { kind: 'info' },
     );
   }
@@ -566,7 +573,7 @@ function renderMissingMediaWidget(ref: MediaRef): HTMLElement {
   const label = ref.name ?? `image · ${ref.id.slice(0, 8)}…`;
   const sizeHint = ref.size
     ? `${(ref.size / 1024).toFixed(1)} KB`
-    : 'размер неизвестен';
+    : t('media.missing.sizeUnknown');
 
   // Two layouts: the rich LQIP variant when the ref carries a blur preview
   // (recipient sees a recognisable blurred shape at the correct aspect ratio),
@@ -579,9 +586,9 @@ function renderMissingMediaWidget(ref: MediaRef): HTMLElement {
       <div class="missing-media__overlay">
         <div class="missing-media__info">
           <div class="missing-media__title"></div>
-          <div class="missing-media__sub">Не загружено · ${sizeHint} · ${ref.width}×${ref.height}</div>
+          <div class="missing-media__sub">${t('media.missing.subLqip', { size: sizeHint, w: ref.width, h: ref.height })}</div>
         </div>
-        <button class="btn btn--ghost btn--small missing-media__btn" type="button">Добавить</button>
+        <button class="btn btn--ghost btn--small missing-media__btn" type="button">${t('media.missing.add')}</button>
       </div>
     `;
     (el.querySelector('.missing-media__preview') as HTMLImageElement).src = ref.preview;
@@ -591,9 +598,9 @@ function renderMissingMediaWidget(ref: MediaRef): HTMLElement {
       <div class="missing-media__frame" aria-hidden="true">🖼</div>
       <div class="missing-media__info">
         <div class="missing-media__title"></div>
-        <div class="missing-media__sub">Изображение не загружено · ${sizeHint}</div>
+        <div class="missing-media__sub">${t('media.missing.subPlain', { size: sizeHint })}</div>
       </div>
-      <button class="btn btn--ghost btn--small missing-media__btn" type="button">Добавить</button>
+      <button class="btn btn--ghost btn--small missing-media__btn" type="button">${t('media.missing.add')}</button>
     `;
   }
 
@@ -607,7 +614,7 @@ function renderMissingMediaWidget(ref: MediaRef): HTMLElement {
 function openMediaCollector(focusId?: string) {
   const refs = state.doc.media ?? [];
   if (!refs.length) {
-    showToast('В этом документе нет изображений', { kind: 'info' });
+    showToast(t('media.collector.empty'), { kind: 'info' });
     return;
   }
   const loadedIds = new Set<string>();
@@ -626,7 +633,7 @@ async function loadMediaByUrl(
   hash: string,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (!isMediaHash(hash)) {
-    return { ok: false, error: 'это не ссылка на изображение' };
+    return { ok: false, error: t('media.err.notMediaLink') };
   }
   try {
     const payload = await decodeMedia(hash, state.password);
@@ -652,12 +659,12 @@ async function loadMediaByUrl(
     return { ok: true, id: payload.id };
   } catch (err) {
     if (err instanceof PasswordRequiredError) {
-      return { ok: false, error: 'ресурс зашифрован — откройте основной документ с паролем' };
+      return { ok: false, error: t('media.err.encrypted') };
     }
     if (err instanceof WrongPasswordError) {
-      return { ok: false, error: 'пароль не подходит этому ресурсу' };
+      return { ok: false, error: t('media.err.wrongPassword') };
     }
-    return { ok: false, error: `не удалось декодировать: ${(err as Error).message}` };
+    return { ok: false, error: t('media.err.decode', { message: (err as Error).message }) };
   }
 }
 
@@ -711,11 +718,11 @@ async function importMediaFromFile(
   if (!bestMatch) {
     await removeMedia(res.ref.id).catch(() => {});
     const hint = res.ref.preview
-      ? 'ни хэш, ни превью не совпали ни с одним ожидаемым изображением'
-      : 'хэш не совпал ни с одним ожидаемым изображением';
+      ? t('media.import.mismatchHint.both')
+      : t('media.import.mismatchHint.hash');
     return {
       ok: false,
-      error: `Это другое изображение — ${hint}. Попробуйте другой файл.`,
+      error: t('media.import.mismatch', { hint }),
     };
   }
 
@@ -734,7 +741,7 @@ async function importMediaFromFile(
       await removeMedia(res.ref.id).catch(() => {});
       return {
         ok: false,
-        error: `Это другое изображение — превью отличается от того, что в документе (расхождение ${Math.round(previewDelta)}/255). Попробуйте другой файл.`,
+        error: t('media.import.previewMismatch', { delta: Math.round(previewDelta) }),
       };
     }
   }
@@ -774,7 +781,7 @@ async function importMediaFromFile(
  */
 async function pickAndInsertImage() {
   if (!state.editor) {
-    showToast('Вставка изображений доступна только в редакторе', { kind: 'warn' });
+    showToast(t('image.insert.editorOnly'), { kind: 'warn' });
     return;
   }
   const file = await pickImageFile();
@@ -795,7 +802,9 @@ async function pickAndInsertImage() {
   // <img src="reader-media:..."> placeholder gets swapped to the data URL
   // before the browser even tries (and fails) to fetch the unknown scheme.
   void paintMediaImages();
-  showToast(`Изображение «${res.ref.name ?? 'без имени'}» добавлено`, { kind: 'success' });
+  showToast(t('image.added', { name: res.ref.name ?? t('image.noName') }), {
+    kind: 'success',
+  });
 }
 
 function pickImageFile(): Promise<File | null> {
@@ -854,17 +863,17 @@ async function handleMediaLanding(hash: string): Promise<boolean> {
     });
     history.replaceState(null, '', location.pathname + location.search);
     showToast(
-      `Изображение «${payload.name ?? payload.id.slice(0, 8) + '…'}» сохранено. Откройте документ, который его использует — оно подгрузится автоматически.`,
+      t('media.landing.saved', {
+        name: payload.name ?? payload.id.slice(0, 8) + '…',
+      }),
       { kind: 'success' },
     );
     return true;
   } catch (err) {
     if (err instanceof PasswordRequiredError) {
-      showError(
-        'Этот ресурс зашифрован. Откройте сначала ссылку на основной документ с тем же паролем — изображения декодируются с теми же ключами.',
-      );
+      showError(t('media.landing.encrypted'));
     } else {
-      showError(`Не удалось загрузить ресурс: ${(err as Error).message}`);
+      showError(t('media.landing.loadFailed', { message: (err as Error).message }));
     }
     return false;
   }
@@ -1383,9 +1392,9 @@ function renderToolbar(): HTMLElement {
     } else {
       const btn = document.createElement('button');
       btn.className = 'btn btn--ghost toolbar__plugins-btn';
-      btn.setAttribute('aria-label', 'Расширения');
+      btn.setAttribute('aria-label', t('toolbar.plugins.label'));
       btn.setAttribute('aria-haspopup', 'menu');
-      btn.title = 'Расширения';
+      btn.title = t('toolbar.plugins.label');
       btn.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="5" r="1.2"/>

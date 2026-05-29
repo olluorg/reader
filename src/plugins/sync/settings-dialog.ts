@@ -1,4 +1,5 @@
 import { showToast } from '../../ui/toast';
+import { t } from './i18n';
 import { getSdk } from './setup';
 
 /**
@@ -17,36 +18,32 @@ export function openSettingsDialog(): void {
   const dialog = document.createElement('div');
   dialog.className = 'dialog dialog--narrow';
   dialog.innerHTML = `
-    <h2 class="dialog__title">Синхронизация</h2>
+    <h2 class="dialog__title">${t('dialog.title')}</h2>
 
     <div class="dialog__field" data-section="unavailable" hidden>
-      <p class="dialog__desc" style="color: var(--c-danger, #b00)">
-        SDK не инициализирован. Сборка приложения, возможно, не получила
-        переменные окружения VITE_OLLU_SERVER / VITE_OLLU_GOOGLE_CLIENT_ID,
-        или произошла ошибка при открытии IndexedDB.
-      </p>
+      <p class="dialog__desc" style="color: var(--c-danger, #b00)">${t('unavailable')}</p>
     </div>
 
     <div class="dialog__field">
-      <label class="dialog__label" for="settings-server-url">Сервер</label>
+      <label class="dialog__label" for="settings-server-url">${t('field.server')}</label>
       <input class="dialog__input" type="url" id="settings-server-url"
              autocomplete="off" inputmode="url" placeholder="https://api.example.com">
       <div class="dialog__hint" data-role="server-hint"></div>
     </div>
 
     <div class="dialog__field">
-      <span class="dialog__label">Аккаунт</span>
+      <span class="dialog__label">${t('field.account')}</span>
       <div data-role="account-state"></div>
     </div>
 
     <div class="dialog__field">
-      <span class="dialog__label">Статус</span>
+      <span class="dialog__label">${t('field.status')}</span>
       <div data-role="status"></div>
     </div>
 
     <div class="dialog__actions">
-      <button class="btn btn--ghost" data-action="close">Закрыть</button>
-      <button class="btn btn--primary" data-action="save">Сохранить</button>
+      <button class="btn btn--ghost" data-action="close">${t('btn.close')}</button>
+      <button class="btn btn--primary" data-action="save">${t('btn.save')}</button>
     </div>
   `;
 
@@ -67,7 +64,7 @@ export function openSettingsDialog(): void {
     saveBtn.disabled = true;
   } else {
     serverInput.value = sdk.config.get();
-    serverHint.textContent = `Текущий: ${sdk.config.get()}`;
+    serverHint.textContent = t('server.current', { url: sdk.config.get() });
   }
 
   let statusTimer: number | null = null;
@@ -82,19 +79,19 @@ export function openSettingsDialog(): void {
     if (session) {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
-        <div>Вы вошли как <strong></strong></div>
-        <button class="btn btn--ghost btn--small" data-action="logout" style="margin-top: 8px">Выйти</button>
+        <div>${t('account.signedInAs')} <strong></strong></div>
+        <button class="btn btn--ghost btn--small" data-action="logout" style="margin-top: 8px">${t('account.logout')}</button>
       `;
       (wrapper.querySelector('strong') as HTMLElement).textContent = session.user.email || session.user.id;
       wrapper.querySelector('[data-action="logout"]')!.addEventListener('click', async () => {
         try {
           await sdk.engine.stop();
           await sdk.auth.logout();
-          showToast('Вышли из аккаунта', { kind: 'info' });
+          showToast(t('account.loggedOut'), { kind: 'info' });
           renderAccount();
           renderStatus();
         } catch (err) {
-          showToast(`Не удалось выйти: ${(err as Error).message}`, { kind: 'error' });
+          showToast(t('account.logoutFailed', { message: (err as Error).message }), { kind: 'error' });
         }
       });
       accountState.appendChild(wrapper);
@@ -106,28 +103,26 @@ export function openSettingsDialog(): void {
 
     if (!googleProviderAvailable) {
       accountState.innerHTML = `
-        <div style="color: var(--c-muted, #888)">
-          Google-логин не настроен (нет VITE_OLLU_GOOGLE_CLIENT_ID на сборке).
-        </div>
+        <div style="color: var(--c-muted, #888)">${t('account.googleUnavailable')}</div>
       `;
       return;
     }
 
     const btn = document.createElement('button');
     btn.className = 'btn btn--primary';
-    btn.textContent = 'Войти через Google';
+    btn.textContent = t('account.loginGoogle');
     btn.addEventListener('click', async () => {
       btn.disabled = true;
-      btn.textContent = 'Открываем Google…';
+      btn.textContent = t('account.openingGoogle');
       try {
         await sdk.auth.loginWith('google');
         await sdk.startIfAuthed();
-        showToast('Вошли в Google', { kind: 'success' });
+        showToast(t('account.loggedIn'), { kind: 'success' });
       } catch (err) {
-        showToast(`Не удалось войти: ${(err as Error).message}`, { kind: 'error' });
+        showToast(t('account.loginFailed', { message: (err as Error).message }), { kind: 'error' });
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Войти через Google';
+        btn.textContent = t('account.loginGoogle');
         renderAccount();
         renderStatus();
       }
@@ -143,22 +138,24 @@ export function openSettingsDialog(): void {
     const running = sdk.engine.isRunning();
     const pending = await sdk.proxy.outbox.size().catch(() => -1);
     statusEl.innerHTML = `
-      <div>Движок: <strong></strong></div>
-      <div>В очереди: <strong></strong></div>
+      <div>${t('status.engine')} <strong></strong></div>
+      <div>${t('status.queue')} <strong></strong></div>
       <div style="margin-top: 8px">
-        <button class="btn btn--ghost btn--small" data-action="sync-now">Синхронизировать сейчас</button>
+        <button class="btn btn--ghost btn--small" data-action="sync-now">${t('status.syncNow')}</button>
       </div>
     `;
-    (statusEl.querySelectorAll('strong')[0] as HTMLElement).textContent = running ? 'работает' : 'остановлен';
+    (statusEl.querySelectorAll('strong')[0] as HTMLElement).textContent = running
+      ? t('status.running')
+      : t('status.stopped');
     (statusEl.querySelectorAll('strong')[1] as HTMLElement).textContent =
-      pending < 0 ? 'ошибка чтения' : String(pending);
+      pending < 0 ? t('status.readError') : String(pending);
     statusEl.querySelector('[data-action="sync-now"]')!.addEventListener('click', () => {
       if (!sdk.engine.isRunning()) {
-        showToast('Не вошли в аккаунт — синхронизация не запущена', { kind: 'warn' });
+        showToast(t('status.notSignedIn'), { kind: 'warn' });
         return;
       }
       sdk.engine.schedule();
-      showToast('Запрошена синхронизация', { kind: 'info' });
+      showToast(t('status.requested'), { kind: 'info' });
     });
   }
 
@@ -172,18 +169,18 @@ export function openSettingsDialog(): void {
     const next = serverInput.value.trim();
     if (!next) {
       await sdk.config.reset();
-      showToast(`Сброшено на ${sdk.config.get()}`, { kind: 'info' });
+      showToast(t('save.reset', { url: sdk.config.get() }), { kind: 'info' });
     } else {
       try {
         new URL(next);
       } catch {
-        showToast('Некорректный URL', { kind: 'error' });
+        showToast(t('save.badUrl'), { kind: 'error' });
         return;
       }
       await sdk.config.set(next);
-      showToast('Сохранено', { kind: 'success' });
+      showToast(t('save.saved'), { kind: 'success' });
     }
-    serverHint.textContent = `Текущий: ${sdk.config.get()}`;
+    serverHint.textContent = t('server.current', { url: sdk.config.get() });
   });
 
   closeBtn.addEventListener('click', close);

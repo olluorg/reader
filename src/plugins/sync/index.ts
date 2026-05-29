@@ -17,6 +17,7 @@ import {
   setDraftMineHash,
   startFreshDraft,
 } from './draft';
+import { t } from './i18n';
 import { initSdk } from './setup';
 import { openSettingsDialog } from './settings-dialog';
 // Backup is its own plugin now (src/plugins/backup/); the dialog is no
@@ -39,7 +40,7 @@ function onOlluIncoming(event: Event): void {
 
 export const syncPlugin: ReaderPlugin = {
   id: 'sync',
-  label: 'Синхронизация',
+  label: t('label'),
 
   async onAppStart(ctx) {
     pluginCtx = ctx;
@@ -117,7 +118,7 @@ export const syncPlugin: ReaderPlugin = {
   },
 
   menuItems() {
-    return [{ label: 'Настройки синхронизации…', action: openSettingsDialog }];
+    return [{ label: t('menu.open'), action: openSettingsDialog }];
   },
 };
 

@@ -1,4 +1,5 @@
 import { showToast } from '../../ui/toast';
+import { t } from './i18n';
 import {
   applySnapshot,
   buildSnapshot,
@@ -15,31 +16,25 @@ export function openBackupDialog(): void {
   const dialog = document.createElement('div');
   dialog.className = 'dialog dialog--narrow';
   dialog.innerHTML = `
-    <h2 class="dialog__title">Бэкап</h2>
-    <p class="dialog__desc">
-      Локальный файл с вашей библиотекой и кэшем изображений. JSON —
-      можно открыть в текстовом редакторе. Никуда не отправляется.
-    </p>
+    <h2 class="dialog__title">${t('dialog.title')}</h2>
+    <p class="dialog__desc">${t('dialog.desc')}</p>
 
     <div class="dialog__field">
-      <span class="dialog__label">Экспорт</span>
-      <button class="btn btn--primary" data-action="export">Скачать .json</button>
+      <span class="dialog__label">${t('field.export')}</span>
+      <button class="btn btn--primary" data-action="export">${t('btn.download')}</button>
     </div>
 
     <div class="dialog__field">
-      <span class="dialog__label">Восстановление</span>
+      <span class="dialog__label">${t('field.restore')}</span>
       <div style="display: flex; gap: 8px; flex-wrap: wrap">
-        <button class="btn btn--ghost" data-action="import-merge">Слить с локальными…</button>
-        <button class="btn btn--ghost" data-action="import-replace">Заменить локальные…</button>
+        <button class="btn btn--ghost" data-action="import-merge">${t('btn.merge')}</button>
+        <button class="btn btn--ghost" data-action="import-replace">${t('btn.replace')}</button>
       </div>
-      <div class="dialog__hint">
-        «Слить» оставляет существующие записи и поверх перезаписывает
-        совпадающие ключи. «Заменить» сначала чистит локальные стораджи.
-      </div>
+      <div class="dialog__hint">${t('restore.hint')}</div>
     </div>
 
     <div class="dialog__actions">
-      <button class="btn btn--ghost" data-action="close">Закрыть</button>
+      <button class="btn btn--ghost" data-action="close">${t('btn.close')}</button>
     </div>
   `;
 
@@ -59,19 +54,16 @@ export function openBackupDialog(): void {
       const name = defaultBackupName();
       downloadBlob(name, json);
       const sizeKB = (json.length / 1024).toFixed(1);
-      showToast(`Сохранено: ${name} (${sizeKB} KB)`, { kind: 'success' });
+      showToast(t('export.done', { name, kb: sizeKB }), { kind: 'success' });
     } catch (err) {
-      showToast(`Не удалось создать бэкап: ${(err as Error).message}`, { kind: 'error' });
+      showToast(t('export.failed', { message: (err as Error).message }), { kind: 'error' });
     } finally {
       exportBtn.disabled = false;
     }
   });
 
   const runImport = async (mode: 'merge' | 'replace') => {
-    if (
-      mode === 'replace' &&
-      !confirm('Заменить локальные данные данными из файла? Текущие записи будут удалены.')
-    ) {
+    if (mode === 'replace' && !confirm(t('replace.confirm'))) {
       return;
     }
     try {
@@ -80,20 +72,18 @@ export function openBackupDialog(): void {
       try {
         parsed = JSON.parse(text) as ReaderSnapshot;
       } catch {
-        showToast('Файл не является корректным JSON', { kind: 'error' });
+        showToast(t('import.badJson'), { kind: 'error' });
         return;
       }
       await applySnapshot(parsed, { mode });
       showToast(
-        mode === 'replace'
-          ? 'Данные заменены. Перезагрузите страницу для отображения.'
-          : 'Данные слиты. Перезагрузите страницу для отображения.',
+        mode === 'replace' ? t('import.replaced') : t('import.merged'),
         { kind: 'success' },
       );
     } catch (err) {
       const msg = (err as Error).message;
       if (msg === 'cancelled') return;
-      showToast(`Восстановление не удалось: ${msg}`, { kind: 'error' });
+      showToast(t('import.failed', { message: msg }), { kind: 'error' });
     }
   };
 

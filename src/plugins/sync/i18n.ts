@@ -1,0 +1,73 @@
+import { createTranslator } from '../../i18n';
+
+const en = {
+  label: 'Sync',
+  'menu.open': 'Sync settings…',
+  'dialog.title': 'Sync',
+  unavailable:
+    'SDK not initialized. The build may not have received the VITE_OLLU_SERVER / VITE_OLLU_GOOGLE_CLIENT_ID env vars, or an error occurred opening IndexedDB.',
+  'field.server': 'Server',
+  'server.current': 'Current: {url}',
+  'field.account': 'Account',
+  'field.status': 'Status',
+  'btn.close': 'Close',
+  'btn.save': 'Save',
+  'account.signedInAs': 'Signed in as',
+  'account.logout': 'Sign out',
+  'account.loggedOut': 'Signed out',
+  'account.logoutFailed': "Couldn't sign out: {message}",
+  'account.googleUnavailable':
+    'Google login is not configured (no VITE_OLLU_GOOGLE_CLIENT_ID in the build).',
+  'account.loginGoogle': 'Sign in with Google',
+  'account.openingGoogle': 'Opening Google…',
+  'account.loggedIn': 'Signed in to Google',
+  'account.loginFailed': "Couldn't sign in: {message}",
+  'status.engine': 'Engine:',
+  'status.queue': 'Queue:',
+  'status.syncNow': 'Sync now',
+  'status.running': 'running',
+  'status.stopped': 'stopped',
+  'status.readError': 'read error',
+  'status.notSignedIn': 'Not signed in — sync not started',
+  'status.requested': 'Sync requested',
+  'save.reset': 'Reset to {url}',
+  'save.badUrl': 'Invalid URL',
+  'save.saved': 'Saved',
+} as const;
+
+const ru: Record<keyof typeof en, string> = {
+  label: 'Синхронизация',
+  'menu.open': 'Настройки синхронизации…',
+  'dialog.title': 'Синхронизация',
+  unavailable:
+    'SDK не инициализирован. Сборка приложения, возможно, не получила переменные окружения VITE_OLLU_SERVER / VITE_OLLU_GOOGLE_CLIENT_ID, или произошла ошибка при открытии IndexedDB.',
+  'field.server': 'Сервер',
+  'server.current': 'Текущий: {url}',
+  'field.account': 'Аккаунт',
+  'field.status': 'Статус',
+  'btn.close': 'Закрыть',
+  'btn.save': 'Сохранить',
+  'account.signedInAs': 'Вы вошли как',
+  'account.logout': 'Выйти',
+  'account.loggedOut': 'Вышли из аккаунта',
+  'account.logoutFailed': 'Не удалось выйти: {message}',
+  'account.googleUnavailable':
+    'Google-логин не настроен (нет VITE_OLLU_GOOGLE_CLIENT_ID на сборке).',
+  'account.loginGoogle': 'Войти через Google',
+  'account.openingGoogle': 'Открываем Google…',
+  'account.loggedIn': 'Вошли в Google',
+  'account.loginFailed': 'Не удалось войти: {message}',
+  'status.engine': 'Движок:',
+  'status.queue': 'В очереди:',
+  'status.syncNow': 'Синхронизировать сейчас',
+  'status.running': 'работает',
+  'status.stopped': 'остановлен',
+  'status.readError': 'ошибка чтения',
+  'status.notSignedIn': 'Не вошли в аккаунт — синхронизация не запущена',
+  'status.requested': 'Запрошена синхронизация',
+  'save.reset': 'Сброшено на {url}',
+  'save.badUrl': 'Некорректный URL',
+  'save.saved': 'Сохранено',
+};
+
+export const t = createTranslator({ en, ru });

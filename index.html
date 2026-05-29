@@ -10,12 +10,14 @@
     <meta name="color-scheme" content="light dark" />
     <title>Reader — Markdown</title>
     <script>
-      // Set the effective theme on <html data-theme="..."> BEFORE the
-      // stylesheet evaluates so the first paint already matches. Uses
-      // the appearance plugin's localStorage key if present; otherwise
-      // falls back to the OS preference.
+      // Set the effective theme + palette on <html data-theme="..." data-palette="...">
+      // BEFORE the stylesheet evaluates so the first paint already matches. Uses
+      // the appearance plugin's localStorage key if present; otherwise falls back
+      // to the OS preference / warm palette.
       (function () {
         var theme = 'auto';
+        var palette = 'warm';
+        var validPalettes = ['warm', 'cool', 'forest', 'plum', 'mono'];
         try {
           var raw = localStorage.getItem('reader.appearance');
           if (raw) {
@@ -23,12 +25,16 @@
             if (parsed && (parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'auto')) {
               theme = parsed.theme;
             }
+            if (parsed && validPalettes.indexOf(parsed.palette) !== -1) {
+              palette = parsed.palette;
+            }
           }
         } catch (e) {}
         if (theme === 'auto') {
           theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-palette', palette);
       })();
     </script>
   </head>

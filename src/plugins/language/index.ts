@@ -1,11 +1,12 @@
 import type { ReaderPlugin } from '../api';
 import { openLanguageDialog } from './dialog';
+import { t } from './i18n';
 
 export const languagePlugin: ReaderPlugin = {
   id: 'language',
-  label: 'Язык',
+  label: t('label'),
   menuItems() {
-    return [{ label: 'Выбрать язык…', action: openLanguageDialog }];
+    return [{ label: t('menu.open'), action: openLanguageDialog }];
   },
 };
 

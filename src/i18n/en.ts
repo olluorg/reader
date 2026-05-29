@@ -205,6 +205,10 @@ Start typing to replace this. Welcome.`,
   'share.meta.payloadCopied':
     '{kb} KB payload · {chars} chars{lock} · copied',
   'share.meta.encrypted': ' · 🔒 encrypted',
+  'share.meta.imagesInLink': {
+    one: ' · {count} image in link',
+    other: ' · {count} images in link',
+  },
   'share.toast.tooLong':
     'Link is still over {maxKb} KB. Splitting into {parts} parts automatically.',
   'share.toast.suggestSplit':
@@ -271,4 +275,40 @@ Start typing to replace this. Welcome.`,
 
   // toast
   'toast.dismiss': 'Dismiss',
+
+  // editor
+  'editor.imageLabel': 'Image',
+
+  // toolbar plugins dropdown
+  'toolbar.plugins.label': 'Extensions',
+
+  // image import / media (main.ts)
+  'image.err.notImage': "This doesn't look like an image.",
+  'image.err.tooLarge': 'File is too large ({mb} MB). Max {maxMb} MB.',
+  'image.err.read': "Couldn't read file: {message}",
+  'image.err.decode': "Couldn't decode image: {message}",
+  'image.optimized': 'Image optimized: {from} → {to} KB (-{saved}%)',
+  'image.insert.editorOnly': 'Inserting images is only available in the editor',
+  'image.added': 'Image «{name}» added',
+  'image.noName': 'untitled',
+  'media.missing.sizeUnknown': 'size unknown',
+  'media.missing.subLqip': 'Not loaded · {size} · {w}×{h}',
+  'media.missing.subPlain': 'Image not loaded · {size}',
+  'media.missing.add': 'Add',
+  'media.collector.empty': 'This document has no images',
+  'media.err.notMediaLink': "this isn't an image link",
+  'media.err.encrypted': 'resource is encrypted — open the main document with its password',
+  'media.err.wrongPassword': "password doesn't fit this resource",
+  'media.err.decode': "couldn't decode: {message}",
+  'media.import.mismatchHint.both':
+    'neither hash nor preview matched any expected image',
+  'media.import.mismatchHint.hash': 'hash matched no expected image',
+  'media.import.mismatch': "This is a different image — {hint}. Try another file.",
+  'media.import.previewMismatch':
+    'This is a different image — the preview differs from the one in the document (divergence {delta}/255). Try another file.',
+  'media.landing.saved':
+    'Image «{name}» saved. Open a document that uses it — it will load automatically.',
+  'media.landing.encrypted':
+    'This resource is encrypted. Open the main document link first with the same password — images are decoded with the same keys.',
+  'media.landing.loadFailed': "Couldn't load resource: {message}",
 } as const;

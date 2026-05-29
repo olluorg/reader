@@ -5,9 +5,12 @@ import {
   FONT_MAX,
   FONT_MIN,
   FONT_PRESETS,
+  PALETTES,
   type AppearanceConfig,
+  type PaletteId,
   type Theme,
 } from './apply';
+import { t } from './i18n';
 import { loadAppearance, saveAppearance } from './storage';
 
 export function openAppearanceDialog(): void {
@@ -19,37 +22,39 @@ export function openAppearanceDialog(): void {
   const dialog = document.createElement('div');
   dialog.className = 'dialog dialog--narrow';
   dialog.innerHTML = `
-    <h2 class="dialog__title">Внешний вид</h2>
-    <p class="dialog__desc">
-      Шрифт и размер применяются только к тексту документа. Интерфейс
-      приложения остаётся без изменений.
-    </p>
+    <h2 class="dialog__title">${t('dialog.title')}</h2>
+    <p class="dialog__desc">${t('dialog.desc')}</p>
 
     <div class="dialog__field">
-      <span class="dialog__label">Тема</span>
+      <span class="dialog__label">${t('field.theme')}</span>
       <div data-role="theme" style="display: flex; gap: 8px; flex-wrap: wrap"></div>
     </div>
 
     <div class="dialog__field">
-      <label class="dialog__label" for="appearance-font">Шрифт документа</label>
+      <span class="dialog__label">${t('field.palette')}</span>
+      <div class="palette-picker" data-role="palette"></div>
+    </div>
+
+    <div class="dialog__field">
+      <label class="dialog__label" for="appearance-font">${t('field.font')}</label>
       <select class="dialog__input" id="appearance-font" data-role="font"></select>
     </div>
 
     <div class="dialog__field">
       <label class="dialog__label" for="appearance-size">
-        Размер шрифта: <span data-role="size-value"></span>px
+        ${t('field.size')} <span data-role="size-value"></span>px
       </label>
       <input class="dialog__input" type="range" id="appearance-size"
              data-role="size" min="${FONT_MIN}" max="${FONT_MAX}" step="1">
     </div>
 
     <div class="dialog__field">
-      <span class="dialog__hint">Сохраняется в localStorage этого браузера.</span>
+      <span class="dialog__hint">${t('field.hint')}</span>
     </div>
 
     <div class="dialog__actions">
-      <button class="btn btn--ghost" data-action="reset">Сбросить</button>
-      <button class="btn btn--primary" data-action="close">Закрыть</button>
+      <button class="btn btn--ghost" data-action="reset">${t('btn.reset')}</button>
+      <button class="btn btn--primary" data-action="close">${t('btn.close')}</button>
     </div>
   `;
 
@@ -57,6 +62,7 @@ export function openAppearanceDialog(): void {
   document.body.appendChild(backdrop);
 
   const themeBox = dialog.querySelector('[data-role="theme"]') as HTMLElement;
+  const paletteBox = dialog.querySelector('[data-role="palette"]') as HTMLElement;
   const fontSel = dialog.querySelector('[data-role="font"]') as HTMLSelectElement;
   const sizeInput = dialog.querySelector('[data-role="size"]') as HTMLInputElement;
   const sizeValue = dialog.querySelector('[data-role="size-value"]') as HTMLElement;
@@ -64,9 +70,9 @@ export function openAppearanceDialog(): void {
   const closeBtn = dialog.querySelector('[data-action="close"]') as HTMLButtonElement;
 
   const themeOptions: Array<{ value: Theme; label: string }> = [
-    { value: 'auto', label: 'Системная' },
-    { value: 'light', label: 'Светлая' },
-    { value: 'dark', label: 'Тёмная' },
+    { value: 'auto', label: t('theme.auto') },
+    { value: 'light', label: t('theme.light') },
+    { value: 'dark', label: t('theme.dark') },
   ];
 
   function commit(next: Partial<AppearanceConfig>): void {
@@ -91,13 +97,38 @@ export function openAppearanceDialog(): void {
     }
   }
 
+  function renderPalette(active: PaletteId): void {
+    paletteBox.innerHTML = '';
+    for (const p of PALETTES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'palette-chip';
+      if (p.id === active) btn.classList.add('palette-chip--active');
+      const paletteLabel = t(`palette.${p.id}`);
+      btn.title = paletteLabel;
+      btn.setAttribute('aria-label', paletteLabel);
+      btn.innerHTML = `
+        <span class="palette-chip__swatch" aria-hidden="true">
+          <span class="palette-chip__half palette-chip__half--light" style="background:${p.swatch.light}"></span>
+          <span class="palette-chip__half palette-chip__half--dark" style="background:${p.swatch.dark}"></span>
+        </span>
+        <span class="palette-chip__label">${paletteLabel}</span>
+      `;
+      btn.addEventListener('click', () => {
+        commit({ palette: p.id });
+        renderPalette(p.id);
+      });
+      paletteBox.appendChild(btn);
+    }
+  }
+
   function fillFontSelect(currentValue: string): void {
     fontSel.innerHTML = '';
     let matched = false;
     for (const p of FONT_PRESETS) {
       const opt = document.createElement('option');
       opt.value = p.value;
-      opt.textContent = p.label;
+      opt.textContent = t(`font.${p.id}`);
       if (p.value === currentValue) {
         opt.selected = true;
         matched = true;
@@ -107,13 +138,14 @@ export function openAppearanceDialog(): void {
     if (!matched) {
       const opt = document.createElement('option');
       opt.value = currentValue;
-      opt.textContent = 'Своё значение';
+      opt.textContent = t('font.custom');
       opt.selected = true;
       fontSel.appendChild(opt);
     }
   }
 
   renderTheme(current.theme);
+  renderPalette(current.palette);
   fillFontSelect(current.fontBody);
   sizeInput.value = String(current.fontSize);
   sizeValue.textContent = String(current.fontSize);
@@ -132,10 +164,11 @@ export function openAppearanceDialog(): void {
     applyAppearance(current);
     saveAppearance(current);
     renderTheme(current.theme);
+    renderPalette(current.palette);
     fillFontSelect(current.fontBody);
     sizeInput.value = String(current.fontSize);
     sizeValue.textContent = String(current.fontSize);
-    showToast('Внешний вид сброшен к умолчаниям', { kind: 'info' });
+    showToast(t('toast.reset'), { kind: 'info' });
   });
 
   const close = () => backdrop.remove();

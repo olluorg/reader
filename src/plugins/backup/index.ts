@@ -1,11 +1,12 @@
 import type { ReaderPlugin } from '../api';
 import { openBackupDialog } from './dialog';
+import { t } from './i18n';
 
 export const backupPlugin: ReaderPlugin = {
   id: 'backup',
-  label: 'Бэкап',
+  label: t('label'),
   menuItems() {
-    return [{ label: 'Экспорт / импорт…', action: openBackupDialog }];
+    return [{ label: t('menu.open'), action: openBackupDialog }];
   },
 };
 

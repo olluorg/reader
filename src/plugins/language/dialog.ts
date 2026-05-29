@@ -1,10 +1,13 @@
 import type { Lang } from '../../i18n';
+import { t } from './i18n';
 import { loadLangPref, saveLangPref } from './storage';
 
 type Choice = 'auto' | Lang;
 
+// Language names stay as endonyms (shown in their own script) and are not
+// translated; only the "follow the system" option is localized.
 const OPTIONS: Array<{ value: Choice; label: string }> = [
-  { value: 'auto', label: 'Системный' },
+  { value: 'auto', label: t('option.auto') },
   { value: 'en', label: 'English' },
   { value: 'ru', label: 'Русский' },
 ];
@@ -18,18 +21,15 @@ export function openLanguageDialog(): void {
   const dialog = document.createElement('div');
   dialog.className = 'dialog dialog--narrow';
   dialog.innerHTML = `
-    <h2 class="dialog__title">Язык</h2>
-    <p class="dialog__desc">
-      По умолчанию язык интерфейса определяется системными настройками.
-      Выбор сохраняется в localStorage этого браузера.
-    </p>
+    <h2 class="dialog__title">${t('dialog.title')}</h2>
+    <p class="dialog__desc">${t('dialog.desc')}</p>
 
     <div class="dialog__field">
       <div data-role="lang" style="display: flex; gap: 8px; flex-wrap: wrap"></div>
     </div>
 
     <div class="dialog__actions">
-      <button class="btn btn--primary" data-action="close">Закрыть</button>
+      <button class="btn btn--primary" data-action="close">${t('btn.close')}</button>
     </div>
   `;
 

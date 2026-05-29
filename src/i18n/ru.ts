@@ -214,6 +214,12 @@ export const ru = {
   'share.meta.payloadCopied':
     '{kb} КБ payload · {chars} символов{lock} · скопировано',
   'share.meta.encrypted': ' · 🔒 шифрование',
+  'share.meta.imagesInLink': {
+    one: ' · {count} картинка в ссылке',
+    few: ' · {count} картинки в ссылке',
+    many: ' · {count} картинок в ссылке',
+    other: ' · {count} картинок в ссылке',
+  },
   'share.toast.tooLong':
     'Ссылка всё ещё превышает {maxKb} КБ. Разбиваю на {parts} частей автоматически.',
   'share.toast.suggestSplit':
@@ -284,4 +290,43 @@ export const ru = {
 
   // toast
   'toast.dismiss': 'Закрыть',
+
+  // editor
+  'editor.imageLabel': 'Изображение',
+
+  // toolbar plugins dropdown
+  'toolbar.plugins.label': 'Расширения',
+
+  // image import / media (main.ts)
+  'image.err.notImage': 'Это не похоже на изображение.',
+  'image.err.tooLarge': 'Файл слишком большой ({mb} MB). Максимум — {maxMb} MB.',
+  'image.err.read': 'Не удалось прочитать файл: {message}',
+  'image.err.decode': 'Не удалось декодировать изображение: {message}',
+  'image.optimized': 'Изображение оптимизировано: {from} → {to} KB (-{saved}%)',
+  'image.insert.editorOnly': 'Вставка изображений доступна только в редакторе',
+  'image.added': 'Изображение «{name}» добавлено',
+  'image.noName': 'без имени',
+  'media.missing.sizeUnknown': 'размер неизвестен',
+  'media.missing.subLqip': 'Не загружено · {size} · {w}×{h}',
+  'media.missing.subPlain': 'Изображение не загружено · {size}',
+  'media.missing.add': 'Добавить',
+  'media.collector.empty': 'В этом документе нет изображений',
+  'media.err.notMediaLink': 'это не ссылка на изображение',
+  'media.err.encrypted':
+    'ресурс зашифрован — откройте основной документ с паролем',
+  'media.err.wrongPassword': 'пароль не подходит этому ресурсу',
+  'media.err.decode': 'не удалось декодировать: {message}',
+  'media.import.mismatchHint.both':
+    'ни хэш, ни превью не совпали ни с одним ожидаемым изображением',
+  'media.import.mismatchHint.hash':
+    'хэш не совпал ни с одним ожидаемым изображением',
+  'media.import.mismatch':
+    'Это другое изображение — {hint}. Попробуйте другой файл.',
+  'media.import.previewMismatch':
+    'Это другое изображение — превью отличается от того, что в документе (расхождение {delta}/255). Попробуйте другой файл.',
+  'media.landing.saved':
+    'Изображение «{name}» сохранено. Откройте документ, который его использует — оно подгрузится автоматически.',
+  'media.landing.encrypted':
+    'Этот ресурс зашифрован. Откройте сначала ссылку на основной документ с тем же паролем — изображения декодируются с теми же ключами.',
+  'media.landing.loadFailed': 'Не удалось загрузить ресурс: {message}',
 } as const;

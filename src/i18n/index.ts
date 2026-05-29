@@ -13,11 +13,19 @@ export const AVAILABLE_LANGS: readonly Lang[] = ['en', 'ru'];
  */
 export const LANG_STORAGE_KEY = 'reader.lang';
 
-type Dict = typeof en;
-type DictKey = keyof Dict;
-
-type PluralForms = { one: string; few?: string; many?: string; other: string };
+export type PluralForms = {
+  one: string;
+  few?: string;
+  many?: string;
+  other: string;
+};
 type Value = string | PluralForms;
+
+/**
+ * A message bundle: a flat map of keys to either a plain string or a set
+ * of plural forms. Both the core and each plugin define their own bundle.
+ */
+export type Messages = Record<string, Value>;
 
 function readOverride(): Lang | null {
   if (typeof localStorage === 'undefined') return null;
@@ -50,9 +58,10 @@ function detectLang(): Lang {
 
 export const lang: Lang = detectLang();
 
-const dict: Dict = lang === 'ru' ? (ru as unknown as Dict) : en;
-
 const pluralRules = new Intl.PluralRules(lang === 'ru' ? 'ru-RU' : 'en-US');
+
+/** Locale tag for `Intl` / `toLocaleString` consumers. */
+export const locale: string = lang === 'ru' ? 'ru-RU' : 'en-US';
 
 function interpolate(template: string, params?: Record<string, string | number>): string {
   if (!params) return template;
@@ -69,13 +78,38 @@ function pickPlural(forms: PluralForms, count: number): string {
   return forms.other;
 }
 
-export function t(key: DictKey, params?: Record<string, string | number>): string {
-  const entry = (dict[key] ?? (en as Record<string, Value>)[key as string]) as Value | undefined;
-  if (entry === undefined) return String(key);
-  if (typeof entry === 'string') return interpolate(entry, params);
-  const count = Number(params?.count ?? 0);
-  return interpolate(pickPlural(entry, count), params);
+export type Translator<D extends Messages> = (
+  key: keyof D,
+  params?: Record<string, string | number>,
+) => string;
+
+/**
+ * Build a translator bound to the active {@link lang}, backed by a set of
+ * per-language bundles. `en` is required and doubles as the fallback when a
+ * key is missing from the active language — so a plugin only has to ship
+ * English to work, and may add other languages incrementally.
+ *
+ * This is the seam that lets each plugin stay a self-contained unit: it
+ * carries its own bundles and gets a typed `t` without importing the core's
+ * message catalogue.
+ */
+export function createTranslator<D extends Messages>(
+  bundles: { en: D } & Partial<Record<Lang, Messages>>,
+): Translator<D> {
+  const active = (bundles[lang] ?? bundles.en) as Messages;
+  const fallback = bundles.en as Messages;
+  return (key, params) => {
+    const k = key as string;
+    const entry = (active[k] ?? fallback[k]) as Value | undefined;
+    if (entry === undefined) return k;
+    if (typeof entry === 'string') return interpolate(entry, params);
+    const count = Number(params?.count ?? 0);
+    return interpolate(pickPlural(entry, count), params);
+  };
 }
+
+/** Core translator over the app-wide message catalogue. */
+export const t: Translator<typeof en> = createTranslator({ en, ru });
 
 /** Format a relative-time string ("3 min ago"). */
 export function formatRelative(ts: number): string {

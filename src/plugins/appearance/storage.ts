@@ -2,6 +2,7 @@ import {
   DEFAULTS,
   FONT_MAX,
   FONT_MIN,
+  isPaletteId,
   type AppearanceConfig,
   type Theme,
 } from './apply';
@@ -33,6 +34,7 @@ export function loadAppearance(): AppearanceConfig {
           : DEFAULTS.fontBody;
     return {
       theme: isTheme(parsed.theme) ? parsed.theme : DEFAULTS.theme,
+      palette: isPaletteId(parsed.palette) ? parsed.palette : DEFAULTS.palette,
       fontBody,
       fontSize: isFontSize(parsed.fontSize) ? parsed.fontSize : DEFAULTS.fontSize,
     };

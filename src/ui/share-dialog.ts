@@ -280,12 +280,13 @@ export function openShareDialog(opts: ShareDialogOptions): void {
         result.hidden = false;
         const kbStr = (inlineAttempt.size / 1024).toFixed(1);
         const chars = inlineAttempt.url.length.toLocaleString();
-        const lock = password ? ' · 🔒 encrypted' : '';
+        const lock = password ? t('share.meta.encrypted') : '';
         const imgCount = doc.media?.length ?? 0;
         const inlineHint = imgCount
-          ? ` · ${imgCount} картинк${pluralImgRu(imgCount)} в ссылке`
+          ? t('share.meta.imagesInLink', { count: imgCount })
           : '';
-        meta.textContent = `${kbStr} KB payload · ${chars} chars${lock}${inlineHint}`;
+        meta.textContent =
+          t('share.meta.payload', { kb: kbStr, chars, lock }) + inlineHint;
         // Hide the resources section — they're inlined, no extra URLs.
         renderMediaSection([], password);
         opts.onGenerated?.({
@@ -568,16 +569,4 @@ function autoPartCount(urlBytes: number): number {
   // Aim each part well below the limit, with overhead headroom.
   const target = URL_MAX_BYTES * 0.75;
   return Math.max(2, Math.min(12, Math.ceil(urlBytes / target)));
-}
-
-// Locale-aware suffix for "картинк{а,и,ок}" used in the inlined-meta hint.
-// Kept local instead of an i18n key because the surrounding phrase ("N
-// картинки в ссылке") is itself ad-hoc and only shown on the happy path.
-function pluralImgRu(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 14) return 'ок';
-  if (mod10 === 1) return 'а';
-  if (mod10 >= 2 && mod10 <= 4) return 'и';
-  return 'ок';
 }
